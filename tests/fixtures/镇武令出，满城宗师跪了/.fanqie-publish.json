@@ -1,0 +1,26 @@
+{
+  "bookName": "镇武令出，满城宗师跪了",
+  "updatedAt": "2026-07-02T08:32:59.714Z",
+  "chapters": [
+    {
+      "chapterNumber": 1,
+      "title": "第001章 开局",
+      "fileName": "第001章 开局.md",
+      "characterCount": 12,
+      "plannedDate": "2026-07-02",
+      "plannedTime": "09:30",
+      "submittedAt": "2026-07-02T07:58:41.168Z",
+      "status": "drafted"
+    },
+    {
+      "chapterNumber": 3,
+      "title": "第003章 风起",
+      "fileName": "第003章 风起.md",
+      "characterCount": 43,
+      "plannedDate": "2026-07-03",
+      "plannedTime": "09:30",
+      "submittedAt": "2026-07-02T08:32:59.713Z",
+      "status": "drafted"
+    }
+  ]
+}

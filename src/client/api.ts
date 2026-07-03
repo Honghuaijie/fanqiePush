@@ -29,6 +29,32 @@ export async function generatePlan(input: {
   return postJson("/api/plan", input);
 }
 
+export interface PublishRunState {
+  status: "idle" | "running" | "paused" | "stopped";
+  currentChapter?: number;
+  message?: string;
+}
+
+export async function startPublish(input: {
+  bookName: string;
+  folderPath: string;
+  items: PublishPlanItem[];
+}): Promise<PublishRunState> {
+  return postJson("/api/publish/start", input);
+}
+
+export async function stopPublish(): Promise<PublishRunState> {
+  return postJson("/api/publish/stop", {});
+}
+
+export async function saveCurrentDraft(): Promise<PublishRunState> {
+  return postJson("/api/publish/save-current-draft", {});
+}
+
+export async function scheduleCurrentChapter(): Promise<PublishRunState> {
+  return postJson("/api/publish/schedule-current", {});
+}
+
 async function postJson<T>(url: string, body: unknown): Promise<T> {
   const response = await fetch(url, {
     method: "POST",

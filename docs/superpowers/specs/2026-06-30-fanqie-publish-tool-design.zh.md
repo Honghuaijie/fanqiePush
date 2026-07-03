@@ -175,6 +175,7 @@
 单章流程：
 
 1. 打开番茄作者后台。
+   - 后台入口地址：`https://fanqienovel.com/main/writer/book-manage`
 2. 找到与本地文件夹同名的书。
 3. 进入章节发布页面。
 4. 填写章节标题。

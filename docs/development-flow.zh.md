@@ -67,6 +67,7 @@
 要完成：
 
 - 启动独立 Playwright 浏览器。
+- 默认打开番茄作者后台书籍管理页：`https://fanqienovel.com/main/writer/book-manage`。
 - 使用独立浏览器配置目录保存登录状态。
 - 第一次运行时让你手动登录番茄作者后台。
 - 后续运行尽量复用登录状态。

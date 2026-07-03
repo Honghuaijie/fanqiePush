@@ -15,6 +15,10 @@ body {
 }
 
 .app-header {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
   max-width: 1180px;
   margin: 0 auto 20px;
 }
@@ -200,6 +204,17 @@ th {
   color: #cf222e;
 }
 
+.status-pill {
+  border: 1px solid #d8dee4;
+  border-radius: 999px;
+  color: #57606a;
+  padding: 6px 10px;
+}
+
+.status-note {
+  color: #687076;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -218,6 +233,62 @@ th {
   padding: 20px;
 }
 
+.flow-modal {
+  width: min(760px, 100%);
+}
+
+.modal-heading {
+  align-items: start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.modal-heading h2 {
+  margin: 0 0 6px;
+}
+
+.modal-heading p {
+  color: #687076;
+  margin: 0;
+}
+
+.icon-button {
+  font-size: 22px;
+  line-height: 1;
+  min-width: 38px;
+  padding: 8px 10px;
+}
+
+.flow-list {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0;
+  padding-left: 24px;
+}
+
+.flow-list li {
+  line-height: 1.55;
+}
+
+.flow-note {
+  border: 1px solid #d8dee4;
+  border-radius: 6px;
+  margin-top: 12px;
+  padding: 12px;
+}
+
+.flow-note h3 {
+  font-size: 15px;
+  margin: 0 0 6px;
+}
+
+.flow-note p {
+  color: #57606a;
+  line-height: 1.6;
+  margin: 0;
+}
+
 .preview-table {
   max-height: 55vh;
   border: 1px solid #d8dee4;
@@ -232,6 +303,11 @@ th {
 }
 
 @media (max-width: 760px) {
+  .app-header {
+    align-items: stretch;
+    display: grid;
+  }
+
   .inline-form,
   .grid-form,
   .summary-grid {

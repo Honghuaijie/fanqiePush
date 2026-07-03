@@ -1639,7 +1639,7 @@ export async function startPublishRun(input: StartPublishInput): Promise<Publish
     viewport: { width: 1400, height: 900 }
   });
   const page = context.pages()[0] ?? (await context.newPage());
-  await page.goto("https://fanqieplatform.com", { waitUntil: "domcontentloaded" });
+  await page.goto("https://fanqienovel.com/main/writer/book-manage", { waitUntil: "domcontentloaded" });
 
   return state;
 }
@@ -1930,7 +1930,7 @@ export class FanqiePage {
   }
 
   private async openAuthorCenter(): Promise<void> {
-    await this.page.goto("https://fanqieplatform.com", { waitUntil: "domcontentloaded" });
+    await this.page.goto("https://fanqienovel.com/main/writer/book-manage", { waitUntil: "domcontentloaded" });
   }
 
   private async openBook(bookName: string): Promise<void> {

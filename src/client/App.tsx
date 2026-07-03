@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import type { PublishPlanItem } from "../shared/types";
-import { generatePlan, importBook, type ImportBookResponse } from "./api";
+import { generatePlan, importBook, scheduleCurrentChapter, startPublish, stopPublish, type ImportBookResponse, type PublishRunState } from "./api";
 import { FinalPreview } from "./components/FinalPreview";
 import { ImportPanel } from "./components/ImportPanel";
 import { PlanTable } from "./components/PlanTable";
+import { PublishFlowGuide } from "./components/PublishFlowGuide";
 import { PublishControls } from "./components/PublishControls";
 import { RangePanel } from "./components/RangePanel";
 
@@ -23,6 +24,8 @@ export function App() {
   const [planItems, setPlanItems] = useState<PublishPlanItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [flowGuideOpen, setFlowGuideOpen] = useState(false);
+  const [publishState, setPublishState] = useState<PublishRunState>({ status: "idle" });
 
   const canStart = useMemo(() => planItems.length > 0, [planItems.length]);
 
@@ -55,9 +58,36 @@ export function App() {
     }
   }
 
-  function handleConfirmPreview() {
+  async function handleConfirmPreview() {
+    if (!book) return;
     setPreviewOpen(false);
-    setError("自动发布将在后续任务接入。当前已经完成最终预览确认流程。");
+    setError(null);
+    setPublishState({ status: "running", currentChapter: planItems[0]?.chapterNumber, message: "正在打开番茄章节编辑器..." });
+    try {
+      const openedState = await startPublish({ bookName: book.bookName, folderPath: book.folderPath, items: planItems });
+      setPublishState({
+        ...openedState,
+        status: "running",
+        message: "已打开章节编辑器，正在提交当前章定时发布..."
+      });
+      const scheduledState = await scheduleCurrentChapter();
+      setPublishState(scheduledState);
+      setError(scheduledState.message ?? null);
+    } catch (publishError) {
+      const message = publishError instanceof Error ? publishError.message : "启动发布失败";
+      setPublishState({ status: "stopped", message });
+      setError(message);
+    }
+  }
+
+  async function handleStopPublish() {
+    try {
+      const state = await stopPublish();
+      setPublishState(state);
+      setError(state.message ?? null);
+    } catch (stopError) {
+      setError(stopError instanceof Error ? stopError.message : "停止发布失败");
+    }
   }
 
   return (
@@ -67,6 +97,7 @@ export function App() {
           <h1>番茄章节发布工具</h1>
           <p>导入 Markdown 章节，生成排期，并提交到番茄定时发布。</p>
         </div>
+        <button className="secondary" onClick={() => setFlowGuideOpen(true)}>查看发布流程</button>
       </header>
       <div className="content-grid">
         <ImportPanel folderPath={folderPath} importedBook={book} onFolderPathChange={setFolderPath} onImport={handleImport} error={error} />
@@ -82,9 +113,17 @@ export function App() {
           onGenerate={handleGeneratePlan}
         />
         <PlanTable items={planItems} onChange={setPlanItems} />
-        <PublishControls canStart={canStart} onOpenPreview={() => setPreviewOpen(true)} />
+        <PublishControls
+          canStart={canStart}
+          statusText={publishState.status}
+          currentChapter={publishState.currentChapter}
+          message={publishState.message}
+          onOpenPreview={() => setPreviewOpen(true)}
+          onStop={handleStopPublish}
+        />
       </div>
       <FinalPreview items={planItems} visible={previewOpen} onCancel={() => setPreviewOpen(false)} onConfirm={handleConfirmPreview} />
+      <PublishFlowGuide visible={flowGuideOpen} onClose={() => setFlowGuideOpen(false)} />
     </main>
   );
 }

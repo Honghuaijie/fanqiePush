@@ -170,6 +170,7 @@ Each chapter is handled as a separate transaction. The result is recorded immedi
 Per-chapter flow:
 
 1. Open Fanqie Author Center.
+   - Writer backend entry: `https://fanqienovel.com/main/writer/book-manage`
 2. Find the book whose name matches the selected folder name.
 3. Enter the chapter publishing page.
 4. Fill the chapter title.
