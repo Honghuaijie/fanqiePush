@@ -23,7 +23,7 @@ declare const KeyboardEvent: any;
 
 export const FANQIE_WRITER_BOOK_MANAGE_URL = "https://fanqienovel.com/main/writer/book-manage";
 
-export type PublishRunStatus = "idle" | "running" | "paused" | "stopped";
+export type PublishRunStatus = "idle" | "running" | "paused" | "waiting-login" | "stopped";
 
 export interface PublishRunState {
   status: PublishRunStatus;
@@ -79,6 +79,7 @@ export interface PublishController {
   inspect(): Promise<BrowserPageSnapshot>;
   openChapterManager(): Promise<PublishRunState>;
   openNewChapterEditor(): Promise<PublishRunState>;
+  continueAfterLogin(): Promise<PublishRunState>;
   saveDraftChapter(chapter: DraftChapterInput): Promise<PublishRunState>;
   saveCurrentDraft(): Promise<PublishRunState>;
   scheduleCurrentChapter(): Promise<PublishRunState>;
@@ -91,12 +92,48 @@ function isBrowserProfileInUseError(error: unknown): boolean {
     || message.includes("Target page, context or browser has been closed");
 }
 
+function isLoginSnapshot(snapshot: BrowserPageSnapshot): boolean {
+  const visibleText = snapshot.visibleText.join(" ");
+  const buttons = snapshot.buttons.join(" ");
+  return snapshot.url.includes("/login")
+    || visibleText.includes("验证码登录")
+    || visibleText.includes("扫码登录")
+    || visibleText.includes("登录/注册")
+    || buttons.includes("登录/注册");
+}
+
 export function createPublishController(launcher: BrowserLauncher): PublishController {
   let state: PublishRunState = { status: "idle" };
   let session: BrowserSession | null = null;
   let currentBookName: string | null = null;
   let currentFolderPath: string | null = null;
   let currentItems: PublishPlanItem[] = [];
+
+  async function openCurrentChapterEditor(): Promise<PublishRunState> {
+    if (!session || !currentBookName) {
+      throw new Error("独立浏览器尚未启动，请先点击开始发布。");
+    }
+
+    await session.goto(FANQIE_WRITER_BOOK_MANAGE_URL);
+    const snapshot = await session.inspect();
+    if (isLoginSnapshot(snapshot)) {
+      state = {
+        status: "waiting-login",
+        currentChapter: state.currentChapter ?? currentItems[0]?.chapterNumber,
+        message: "请在弹出的 Chrome 窗口中完成番茄登录，登录成功后点击继续。"
+      };
+      return state;
+    }
+
+    await session.openChapterManager(currentBookName);
+    await session.openNewChapterEditor();
+    state = {
+      status: "paused",
+      currentChapter: state.currentChapter ?? currentItems[0]?.chapterNumber,
+      message: "已打开新建章节编辑器，准备定时发布当前章。"
+    };
+    return state;
+  }
 
   async function getCurrentChapterContext() {
     if (!currentFolderPath || !currentBookName) {
@@ -128,14 +165,8 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
         currentBookName = currentBookName ?? input.bookName;
         currentFolderPath = currentFolderPath ?? input.folderPath;
         currentItems = input.items.length > 0 ? input.items : currentItems;
-        await session.openChapterManager(currentBookName);
-        await session.openNewChapterEditor();
-        state = {
-          ...state,
-          currentChapter: state.currentChapter ?? input.items[0]?.chapterNumber,
-          message: "已打开新建章节编辑器，准备定时发布当前章。"
-        };
-        return state;
+        state = { ...state, currentChapter: state.currentChapter ?? input.items[0]?.chapterNumber };
+        return openCurrentChapterEditor();
       }
 
       const profileDir = path.join(input.folderPath, ".fanqie-browser-profile");
@@ -144,9 +175,12 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
         currentBookName = input.bookName;
         currentFolderPath = input.folderPath;
         currentItems = input.items;
-        await session.goto(FANQIE_WRITER_BOOK_MANAGE_URL);
-        await session.openChapterManager(input.bookName);
-        await session.openNewChapterEditor();
+        state = {
+          status: "running",
+          currentChapter: input.items[0]?.chapterNumber,
+          message: "正在打开番茄作者后台。"
+        };
+        return await openCurrentChapterEditor();
       } catch (error) {
         session = null;
         currentBookName = null;
@@ -157,14 +191,6 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
         }
         throw error;
       }
-
-      state = {
-        status: "paused",
-        currentChapter: input.items[0]?.chapterNumber,
-        message: "已打开新建章节编辑器，准备定时发布当前章。"
-      };
-
-      return state;
     },
 
     async inspect() {
@@ -199,6 +225,14 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
         message: "已打开新建章节编辑器，仅用于草稿适配，未提交发布。"
       };
       return state;
+    },
+
+    async continueAfterLogin() {
+      if (!session || !currentBookName) {
+        throw new Error("独立浏览器尚未启动，请先点击开始发布。");
+      }
+
+      return openCurrentChapterEditor();
     },
 
     async saveDraftChapter(chapter) {

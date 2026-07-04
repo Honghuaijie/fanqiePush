@@ -80,6 +80,14 @@ export function createRoutes(): Router {
     }
   });
 
+  router.post("/publish/continue", async (_req, res, next) => {
+    try {
+      res.json(await publishController.continueAfterLogin());
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.post("/publish/start", async (req, res, next) => {
     try {
       const input = z.object({

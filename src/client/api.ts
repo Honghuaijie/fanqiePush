@@ -32,7 +32,7 @@ export async function generatePlan(input: {
 }
 
 export interface PublishRunState {
-  status: "idle" | "running" | "paused" | "stopped";
+  status: "idle" | "running" | "paused" | "waiting-login" | "stopped";
   currentChapter?: number;
   message?: string;
 }
@@ -47,6 +47,10 @@ export async function startPublish(input: {
 
 export async function stopPublish(): Promise<PublishRunState> {
   return postJson("/api/publish/stop", {});
+}
+
+export async function continuePublish(): Promise<PublishRunState> {
+  return postJson("/api/publish/continue", {});
 }
 
 export async function saveCurrentDraft(): Promise<PublishRunState> {

@@ -135,6 +135,102 @@ describe("publisher controller", () => {
     })).rejects.toThrow("发布专用浏览器已经在运行");
   });
 
+  it("waits for manual login when Fanqie redirects to the login page", async () => {
+    const events: string[] = [];
+    const controller = createPublishController({
+      openBrowser: async () => ({
+        goto: async (url) => {
+          events.push(`goto:${url}`);
+        },
+        inspect: async () => ({
+          url: "https://fanqienovel.com/main/writer/login",
+          title: "作者专区-番茄小说网",
+          visibleText: ["验证码登录", "扫码登录", "登录/注册"],
+          buttons: ["登录/注册"],
+          links: []
+        }),
+        openChapterManager: async () => {
+          events.push("chapter-manager");
+        },
+        openNewChapterEditor: async () => {
+          events.push("new-chapter-editor");
+        },
+        saveDraftChapter: async () => undefined,
+        close: async () => undefined
+      })
+    });
+
+    const state = await controller.start({
+      bookName: "测试书",
+      folderPath: "/books/测试书",
+      items: [planItem]
+    });
+
+    expect(state).toEqual({
+      status: "waiting-login",
+      currentChapter: 1,
+      message: "请在弹出的 Chrome 窗口中完成番茄登录，登录成功后点击继续。"
+    });
+    expect(events).toEqual([
+      `goto:https://fanqienovel.com/main/writer/book-manage`
+    ]);
+  });
+
+  it("continues after manual login and opens the new chapter editor", async () => {
+    let loggedIn = false;
+    const events: string[] = [];
+    const controller = createPublishController({
+      openBrowser: async () => ({
+        goto: async (url) => {
+          events.push(`goto:${url}`);
+        },
+        inspect: async () => loggedIn
+          ? {
+              url: "https://fanqienovel.com/main/writer/book-manage",
+              title: "作者专区",
+              visibleText: ["测试书", "章节管理"],
+              buttons: [],
+              links: []
+            }
+          : {
+              url: "https://fanqienovel.com/main/writer/login",
+              title: "作者专区-番茄小说网",
+              visibleText: ["验证码登录", "扫码登录", "登录/注册"],
+              buttons: ["登录/注册"],
+              links: []
+            },
+        openChapterManager: async (bookName) => {
+          events.push(`chapter-manager:${bookName}`);
+        },
+        openNewChapterEditor: async () => {
+          events.push("new-chapter-editor");
+        },
+        saveDraftChapter: async () => undefined,
+        close: async () => undefined
+      })
+    });
+
+    await controller.start({
+      bookName: "测试书",
+      folderPath: "/books/测试书",
+      items: [planItem]
+    });
+    loggedIn = true;
+    const state = await controller.continueAfterLogin();
+
+    expect(state).toEqual({
+      status: "paused",
+      currentChapter: 1,
+      message: "已打开新建章节编辑器，准备定时发布当前章。"
+    });
+    expect(events).toEqual([
+      `goto:https://fanqienovel.com/main/writer/book-manage`,
+      `goto:https://fanqienovel.com/main/writer/book-manage`,
+      "chapter-manager:测试书",
+      "new-chapter-editor"
+    ]);
+  });
+
   it("stops an active browser session", async () => {
     const events: string[] = [];
     const controller = createPublishController({

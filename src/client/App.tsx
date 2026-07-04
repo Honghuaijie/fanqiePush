@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { PublishPlanItem } from "../shared/types";
-import { generatePlan, importBook, scheduleCurrentChapter, startPublish, stopPublish, type ImportBookResponse, type PublishRunState } from "./api";
+import { continuePublish, generatePlan, importBook, scheduleCurrentChapter, startPublish, stopPublish, type ImportBookResponse, type PublishRunState } from "./api";
 import { FinalPreview } from "./components/FinalPreview";
 import { ImportPanel } from "./components/ImportPanel";
 import { PlanTable } from "./components/PlanTable";
@@ -66,6 +66,12 @@ export function App() {
     setPublishState({ status: "running", currentChapter: planItems[0]?.chapterNumber, message: "正在打开番茄章节编辑器..." });
     try {
       const openedState = await startPublish({ bookName: book.bookName, folderPath: book.folderPath, items: planItems });
+      if (openedState.status === "waiting-login") {
+        setPublishState(openedState);
+        setError(null);
+        return;
+      }
+
       setPublishState({
         ...openedState,
         status: "running",
@@ -76,6 +82,31 @@ export function App() {
       setError(scheduledState.message ?? null);
     } catch (publishError) {
       const message = publishError instanceof Error ? publishError.message : "启动发布失败";
+      setPublishState({ status: "stopped", message });
+      setError(message);
+    }
+  }
+
+  async function handleContinuePublish() {
+    setError(null);
+    setPublishState((current) => ({ ...current, status: "running", message: "正在确认登录状态并继续发布..." }));
+    try {
+      const continuedState = await continuePublish();
+      if (continuedState.status === "waiting-login") {
+        setPublishState(continuedState);
+        return;
+      }
+
+      setPublishState({
+        ...continuedState,
+        status: "running",
+        message: "已打开章节编辑器，正在提交当前章定时发布..."
+      });
+      const scheduledState = await scheduleCurrentChapter();
+      setPublishState(scheduledState);
+      setError(scheduledState.message ?? null);
+    } catch (continueError) {
+      const message = continueError instanceof Error ? continueError.message : "继续发布失败";
       setPublishState({ status: "stopped", message });
       setError(message);
     }
@@ -128,6 +159,7 @@ export function App() {
           currentChapter={publishState.currentChapter}
           message={publishState.message}
           onOpenPreview={() => setPreviewOpen(true)}
+          onContinue={handleContinuePublish}
           onStop={handleStopPublish}
         />
       </div>
