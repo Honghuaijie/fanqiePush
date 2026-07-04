@@ -198,10 +198,11 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
 
     async start(input) {
       if (session) {
-        currentBookName = currentBookName ?? input.bookName;
-        currentFolderPath = currentFolderPath ?? input.folderPath;
-        currentItems = input.items.length > 0 ? input.items : currentItems;
-        state = { ...state, currentChapter: state.currentChapter ?? input.items[0]?.chapterNumber, logs: [...logs] };
+        currentBookName = input.bookName;
+        currentFolderPath = input.folderPath;
+        currentItems = input.items;
+        logs = [];
+        state = { status: "running", currentChapter: input.items[0]?.chapterNumber, logs: [...logs] };
         return openCurrentChapterEditor();
       }
 

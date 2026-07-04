@@ -153,6 +153,53 @@ describe("publisher controller", () => {
     expect(secondState.message).toBe("已打开新建章节编辑器，准备定时发布当前章。");
   });
 
+  it("switches book context when starting a new publish task with an active session", async () => {
+    const events: string[] = [];
+    const controller = createPublishController({
+      openBrowser: async () => {
+        events.push("open");
+        return {
+          goto: async () => undefined,
+          inspect: async () => ({
+            url: "https://fanqienovel.com/main/writer/book-manage",
+            title: "作者专区",
+            visibleText: [],
+            buttons: [],
+            links: []
+          }),
+          openChapterManager: async (bookName) => {
+            events.push(`chapter-manager:${bookName}`);
+          },
+          openNewChapterEditor: async () => {
+            events.push("new-chapter-editor");
+          },
+          saveDraftChapter: async () => undefined,
+          close: async () => undefined
+        };
+      }
+    });
+
+    await controller.start({
+      bookName: "旧书",
+      folderPath: "/books/旧书",
+      items: [{ ...planItem, chapterNumber: 1 }]
+    });
+    const state = await controller.start({
+      bookName: "新书",
+      folderPath: "/books/新书",
+      items: [{ ...planItem, chapterNumber: 38 }]
+    });
+
+    expect(events).toEqual([
+      "open",
+      "chapter-manager:旧书",
+      "new-chapter-editor",
+      "chapter-manager:新书",
+      "new-chapter-editor"
+    ]);
+    expect(state.currentChapter).toBe(38);
+  });
+
   it("shows a readable error when the browser profile is already in use", async () => {
     const controller = createPublishController({
       openBrowser: async () => {
