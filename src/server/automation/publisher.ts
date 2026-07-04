@@ -723,8 +723,32 @@ export const publishController = createPublishController({
         await pickerInputs.nth(0).fill(dateText);
         await activePage.keyboard.press("Tab");
         await activePage.waitForTimeout(300);
+        await pickerInputs.nth(1).click();
         await pickerInputs.nth(1).fill(timeText);
-        await activePage.keyboard.press("Tab");
+        const confirmed = await activePage.evaluate(() => {
+          const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
+          const visible = (element: Element) => {
+            const style = window.getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+            return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+          };
+          const target = Array.from(document.querySelectorAll("button, [role='button'], span, div"))
+            .filter(visible)
+            .filter((element) => normalize(element.textContent) === "确定")
+            .sort((left, right) => {
+              const leftRect = left.getBoundingClientRect();
+              const rightRect = right.getBoundingClientRect();
+              return rightRect.top - leftRect.top;
+            })[0];
+          if (target instanceof HTMLElement) {
+            target.click();
+            return true;
+          }
+          return false;
+        });
+        if (!confirmed) {
+          await activePage.keyboard.press("Tab");
+        }
         await activePage.waitForTimeout(500);
       }
 
