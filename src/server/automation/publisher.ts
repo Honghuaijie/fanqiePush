@@ -424,35 +424,32 @@ export const publishController = createPublishController({
 
     async function clickVisibleButton(text: string, options: { exact?: boolean; timeout?: number } = {}) {
       const timeout = options.timeout ?? 15000;
-      await activePage.waitForFunction((args: any) => {
+      const point = await activePage.waitForFunction((args: any) => {
         const [targetText, exact] = args as [string, boolean];
         const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
         const visible = (element: Element) => {
           const style = window.getComputedStyle(element);
           const rect = element.getBoundingClientRect();
-          return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
-        };
-        return Array.from(document.querySelectorAll("button, [role='button']"))
-          .some((element) => visible(element) && (exact ? normalize(element.textContent) === targetText : normalize(element.textContent).includes(targetText)));
-      }, [text, options.exact ?? true], { timeout });
-
-      await activePage.evaluate((args: any) => {
-        const [targetText, exact] = args as [string, boolean];
-        const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
-        const visible = (element: Element) => {
-          const style = window.getComputedStyle(element);
-          const rect = element.getBoundingClientRect();
-          return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+          return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0
+            && !element.hasAttribute("disabled") && element.getAttribute("aria-disabled") !== "true";
         };
         const candidates = Array.from(document.querySelectorAll("button, [role='button']"))
           .filter((element) => visible(element) && (exact ? normalize(element.textContent) === targetText : normalize(element.textContent).includes(targetText)))
           .sort((left, right) => normalize(left.textContent).length - normalize(right.textContent).length);
         const target = candidates[0];
         if (!(target instanceof HTMLElement)) {
-          throw new Error(`没有找到按钮：${targetText}`);
+          return null;
         }
-        target.click();
-      }, [text, options.exact ?? true]);
+        target.scrollIntoView({ block: "center", inline: "center" });
+        const rect = target.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      }, [text, options.exact ?? true], { timeout });
+
+      const clickPoint = await point.jsonValue();
+      if (!clickPoint) {
+        throw new Error(`没有找到可点击按钮：${text}`);
+      }
+      await activePage.mouse.click(clickPoint.x, clickPoint.y);
     }
 
     async function clickIfVisible(text: string, options: { exact?: boolean } = {}) {
@@ -487,6 +484,105 @@ export const publishController = createPublishController({
         return Array.from(document.querySelectorAll("body *"))
           .some((element) => visible(element) && normalize(element.textContent).includes(targetText));
       }, text, { timeout });
+    }
+
+    async function getPublishPageState() {
+      return activePage.evaluate(() => {
+        const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
+        const visible = (element: Element) => {
+          const style = window.getComputedStyle(element);
+          const rect = element.getBoundingClientRect();
+          return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+        };
+        const buttonTexts = Array.from(document.querySelectorAll("button, [role='button']"))
+          .filter(visible)
+          .map((element) => normalize(element.textContent))
+          .filter(Boolean);
+        const bodyText = normalize(document.body.innerText);
+        return {
+          url: window.location.href,
+          buttons: [...new Set(buttonTexts)].slice(0, 30),
+          hasEditor: Array.from(document.querySelectorAll(".ProseMirror, [contenteditable='true']")).some(visible),
+          hasSaved: bodyText.includes("已保存"),
+          hasNext: buttonTexts.some((text) => text === "下一步"),
+          hasSubmit: buttonTexts.some((text) => text === "提交"),
+          hasFullCheck: buttonTexts.some((text) => text.includes("全面检测")),
+          hasAnyCheck: buttonTexts.some((text) => text.includes("检测")),
+          hasPublishSettings: bodyText.includes("发布设置") && bodyText.includes("确认发布"),
+          hasConfirmPublish: buttonTexts.some((text) => text.includes("确认发布"))
+        };
+      });
+    }
+
+    async function waitForEditorSaved() {
+      try {
+        await activePage.waitForFunction(() => document.body.innerText.includes("已保存"), null, { timeout: 20000 });
+      } catch {
+        const state = await getPublishPageState();
+        throw new Error(`章节内容已填写，但没有等到“已保存”状态。当前按钮：${state.buttons.join("、") || "无"}`);
+      }
+    }
+
+    async function clickNextAndWaitForDetection() {
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        await clickVisibleButton("下一步");
+        try {
+          await activePage.waitForFunction(() => {
+            const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
+            const visible = (element: Element) => {
+              const style = window.getComputedStyle(element);
+              const rect = element.getBoundingClientRect();
+              return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+            };
+            const buttonTexts = Array.from(document.querySelectorAll("button, [role='button']"))
+              .filter(visible)
+              .map((element) => normalize(element.textContent));
+            const bodyText = normalize(document.body.innerText);
+            return buttonTexts.some((text) => text === "提交" || text.includes("检测") || text.includes("确认发布"))
+              || bodyText.includes("发布设置");
+          }, null, { timeout: 6000 });
+          return;
+        } catch {
+          const state = await getPublishPageState();
+          if (!state.hasNext || state.hasSubmit || state.hasFullCheck || state.hasAnyCheck || state.hasPublishSettings) {
+            return;
+          }
+          if (attempt === 3) {
+            throw new Error(`已填写章节内容，但点击“下一步”后页面仍停在编辑器。请确认页面是否已保存、标题是否完整、或番茄页面是否有必填项提示。当前按钮：${state.buttons.join("、") || "无"}`);
+          }
+        }
+      }
+    }
+
+    async function openPublishSettingsFromDetection() {
+      await activePage.waitForTimeout(800);
+      await clickIfVisible("提交");
+
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        const state = await getPublishPageState();
+        if (state.hasPublishSettings) return;
+        if (state.hasSubmit) {
+          await clickIfVisible("提交");
+          await activePage.waitForTimeout(800);
+          continue;
+        }
+        if (state.hasFullCheck) {
+          await clickVisibleButton("全面检测", { exact: false, timeout: 10000 });
+          await activePage.waitForTimeout(1200);
+          continue;
+        }
+        if (state.hasAnyCheck) {
+          await clickVisibleButton("检测", { exact: false, timeout: 10000 });
+          await activePage.waitForTimeout(1200);
+          continue;
+        }
+
+        if (attempt < 3) {
+          await activePage.waitForTimeout(1200);
+          continue;
+        }
+        throw new Error(`点击“下一步”后没有找到内容检测或发布设置入口。当前按钮：${state.buttons.join("、") || "无"}`);
+      }
     }
 
     async function applyPublishSettings(plannedDate: string, plannedTime: string) {
@@ -769,16 +865,9 @@ export const publishController = createPublishController({
       },
       async scheduleChapter(chapter, plannedDate, plannedTime) {
         await fillEditor(chapter);
-        await clickVisibleButton("下一步");
-
-        await activePage.waitForTimeout(800);
-        await clickIfVisible("提交");
-
-        await activePage.waitForTimeout(800);
-        const publishSettingsAlreadyOpen = await activePage.evaluate(() => document.body.innerText.includes("发布设置") && document.body.innerText.includes("确认发布"));
-        if (!publishSettingsAlreadyOpen) {
-          await clickVisibleButton("全面检测", { timeout: 30000 });
-        }
+        await waitForEditorSaved();
+        await clickNextAndWaitForDetection();
+        await openPublishSettingsFromDetection();
 
         await waitForVisibleText("发布设置", 90000);
         await waitForVisibleText("确认发布", 90000);
