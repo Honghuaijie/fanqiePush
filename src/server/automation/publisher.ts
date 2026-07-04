@@ -718,11 +718,51 @@ export const publishController = createPublishController({
       const pickerInputs = activePage.locator(".arco-modal input.arco-picker-start-time, [role='dialog'] input.arco-picker-start-time");
       await pickerInputs.first().waitFor({ timeout: 15000 });
 
-      async function fillPickerValues(dateText: string, timeText: string) {
+      async function pickDateValue(dateText: string) {
+        const [, monthText, dayText] = dateText.split("-");
+        const dayNumber = String(Number(dayText));
         await pickerInputs.nth(0).scrollIntoViewIfNeeded();
-        await pickerInputs.nth(0).fill(dateText);
-        await activePage.keyboard.press("Tab");
+        await pickerInputs.nth(0).click();
         await activePage.waitForTimeout(300);
+        const clicked = await activePage.evaluate((args: any) => {
+          const [targetDate, targetMonthText, targetDayText] = args as [string, string, string];
+          const visible = (element: Element) => {
+            const style = window.getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+            return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+          };
+          const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
+          const candidates = Array.from(document.querySelectorAll("[class*='picker'], [role='gridcell'], td, div, span"))
+            .filter(visible)
+            .filter((element) => {
+              const text = normalize(element.textContent);
+              const aria = normalize(element.getAttribute("aria-label") || element.getAttribute("title"));
+              const className = typeof element.className === "string" ? element.className : "";
+              return (text === targetDayText || aria.includes(targetDate) || aria.includes(`${targetMonthText}-${targetDayText}`))
+                && !className.includes("disabled")
+                && !className.includes("not-in-view");
+            })
+            .sort((left, right) => {
+              const leftRect = left.getBoundingClientRect();
+              const rightRect = right.getBoundingClientRect();
+              return (rightRect.width * rightRect.height) - (leftRect.width * leftRect.height);
+            });
+          const target = candidates.find((element) => element instanceof HTMLElement);
+          if (target instanceof HTMLElement) {
+            target.click();
+            return true;
+          }
+          return false;
+        }, [dateText, monthText, dayNumber]);
+        if (!clicked) {
+          await pickerInputs.nth(0).fill(dateText);
+          await activePage.keyboard.press("Tab");
+        }
+        await activePage.waitForTimeout(500);
+      }
+
+      async function fillPickerValues(dateText: string, timeText: string) {
+        await pickDateValue(dateText.replace(/\//g, "-"));
         await pickerInputs.nth(1).click();
         await pickerInputs.nth(1).fill(timeText);
         const confirmed = await activePage.evaluate(() => {
