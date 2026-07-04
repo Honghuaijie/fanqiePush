@@ -695,6 +695,56 @@ export const publishController = createPublishController({
       }, [plannedDate, plannedTime]);
     }
 
+    async function waitForPublishSubmissionResult() {
+      const result = await activePage.waitForFunction(() => {
+        const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
+        const visible = (element: Element) => {
+          const style = window.getComputedStyle(element);
+          const rect = element.getBoundingClientRect();
+          return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+        };
+        const bodyText = normalize(document.body.innerText);
+        const dialogOpen = Array.from(document.querySelectorAll("[role='dialog'], .arco-modal, .semi-modal, body > div"))
+          .filter(visible)
+          .some((element) => normalize(element.textContent).includes("发布设置") && normalize(element.textContent).includes("确认发布"));
+        const toastText = Array.from(document.querySelectorAll(".arco-message, .semi-toast, .semi-toast-content, [class*='message'], [class*='toast']"))
+          .filter(visible)
+          .map((element) => normalize(element.textContent))
+          .filter(Boolean)
+          .join(" ");
+        const knownFailureText = [
+          "超出每日上限",
+          "发布失败",
+          "提交失败",
+          "不能发布",
+          "无法发布",
+          "请选择",
+          "不能为空"
+        ].find((text) => bodyText.includes(text) || toastText.includes(text));
+        if (knownFailureText) {
+          return {
+            status: "failed",
+            message: toastText || bodyText.match(/[^。！？\n]*(超出每日上限|发布失败|提交失败|不能发布|无法发布|请选择|不能为空)[^。！？\n]*/)?.[0] || knownFailureText
+          };
+        }
+        if (bodyText.includes("发布成功") || bodyText.includes("提交成功") || bodyText.includes("定时发布成功")) {
+          return { status: "succeeded", message: "发布成功" };
+        }
+        if (!dialogOpen && !bodyText.includes("发布设置")) {
+          return { status: "succeeded", message: "发布设置已关闭" };
+        }
+        return null;
+      }, null, { timeout: 15000 }).catch(async () => {
+        const state = await getPublishPageState();
+        throw new Error(`点击“确认发布”后没有确认到发布结果，未写入成功记录。当前按钮：${state.buttons.join("、") || "无"}`);
+      });
+
+      const publishResult = await result.jsonValue() as { status: "failed" | "succeeded"; message: string };
+      if (publishResult.status === "failed") {
+        throw new Error(`番茄发布失败：${publishResult.message}`);
+      }
+    }
+
     return {
       async goto(url) {
         await activePage.goto(url, { waitUntil: "domcontentloaded" });
@@ -918,7 +968,7 @@ export const publishController = createPublishController({
         await waitForVisibleText("确认发布", 90000);
         await applyPublishSettings(plannedDate, plannedTime);
         await clickVisibleButton("确认发布", { timeout: 15000 });
-        await activePage.waitForTimeout(1500);
+        await waitForPublishSubmissionResult();
       },
       async close() {
         await context.close();

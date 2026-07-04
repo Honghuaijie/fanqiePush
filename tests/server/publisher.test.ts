@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -566,5 +566,42 @@ describe("publisher controller", () => {
       plannedTime: "09:30",
       status: "scheduled"
     }]);
+  });
+
+  it("does not mark a chapter scheduled when publish submission fails", async () => {
+    tempDir = await mkdtemp(path.join(os.tmpdir(), "fanqie-schedule-fail-"));
+    const bookDir = path.join(tempDir, "测试书");
+    await mkdir(bookDir);
+    await writeFile(path.join(bookDir, "第001章 开局.md"), "# 第001章 开局\n\n这是第一章正文。".repeat(120), "utf8");
+
+    const controller = createPublishController({
+      openBrowser: async () => ({
+        goto: async () => undefined,
+        inspect: async () => ({
+          url: "https://fanqienovel.com/main/writer/publish",
+          title: "章节编辑",
+          visibleText: [],
+          buttons: ["存草稿", "下一步"],
+          links: []
+        }),
+        openChapterManager: async () => undefined,
+        openNewChapterEditor: async () => undefined,
+        saveDraftChapter: async () => undefined,
+        scheduleChapter: async () => {
+          throw new Error("番茄发布失败：更新作品数超出每日上限");
+        },
+        close: async () => undefined
+      })
+    });
+
+    await controller.start({
+      bookName: "测试书",
+      folderPath: bookDir,
+      items: [planItem]
+    });
+
+    await expect(controller.scheduleCurrentChapter()).rejects.toThrow("更新作品数超出每日上限");
+
+    await expect(access(path.join(bookDir, ".fanqie-publish.json"))).rejects.toThrow();
   });
 });
