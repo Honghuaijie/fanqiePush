@@ -585,7 +585,62 @@ export const publishController = createPublishController({
       }
     }
 
+    async function enableScheduledPublishIfNeeded() {
+      const switchPoint = await activePage.evaluate(() => {
+        const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
+        const visible = (element: Element) => {
+          const style = window.getComputedStyle(element);
+          const rect = element.getBoundingClientRect();
+          return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+        };
+        const dialog = Array.from(document.querySelectorAll("[role='dialog'], .arco-modal, .semi-modal, body > div"))
+          .filter(visible)
+          .find((element) => normalize(element.textContent).includes("发布设置") && normalize(element.textContent).includes("确认发布"))
+          ?? document.body;
+        const visibleInputs = Array.from(dialog.querySelectorAll("input")).filter(visible) as HTMLInputElement[];
+        const hasScheduleInputs = visibleInputs.length >= 2
+          && visibleInputs.some((input) => /^\d{4}[-/]\d{2}[-/]\d{2}$/.test(input.value) || normalize(input.getAttribute("placeholder")).includes("日期"))
+          && visibleInputs.some((input) => /^\d{2}:\d{2}$/.test(input.value) || normalize(input.getAttribute("placeholder")).includes("时间"));
+        if (hasScheduleInputs) return null;
+
+        const switches = Array.from(dialog.querySelectorAll("button[role='switch'], [role='switch'], .arco-switch, .semi-switch"))
+          .filter(visible) as Element[];
+        const target = switches.find((element) => element.getAttribute("aria-checked") !== "true" && !element.className.toString().includes("checked"))
+          ?? switches[0];
+        if (!(target instanceof HTMLElement)) {
+          throw new Error("发布设置里没有找到“定时发布”开关。");
+        }
+
+        target.scrollIntoView({ block: "center", inline: "center" });
+        const rect = target.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      });
+
+      if (switchPoint) {
+        await activePage.mouse.click(switchPoint.x, switchPoint.y);
+      }
+
+      await activePage.waitForFunction(() => {
+        const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
+        const visible = (element: Element) => {
+          const style = window.getComputedStyle(element);
+          const rect = element.getBoundingClientRect();
+          return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+        };
+        const dialog = Array.from(document.querySelectorAll("[role='dialog'], .arco-modal, .semi-modal, body > div"))
+          .filter(visible)
+          .find((element) => normalize(element.textContent).includes("发布设置") && normalize(element.textContent).includes("确认发布"))
+          ?? document.body;
+        const inputs = Array.from(dialog.querySelectorAll("input")).filter(visible) as HTMLInputElement[];
+        const hasDateInput = inputs.some((input) => /^\d{4}[-/]\d{2}[-/]\d{2}$/.test(input.value) || normalize(input.getAttribute("placeholder")).includes("日期"));
+        const hasTimeInput = inputs.some((input) => /^\d{2}:\d{2}$/.test(input.value) || normalize(input.getAttribute("placeholder")).includes("时间"));
+        return hasDateInput && hasTimeInput;
+      }, null, { timeout: 15000 });
+    }
+
     async function applyPublishSettings(plannedDate: string, plannedTime: string) {
+      await enableScheduledPublishIfNeeded();
+
       await activePage.evaluate((args: any) => {
         const [dateValue, timeValue] = args as [string, string];
         const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
@@ -618,20 +673,10 @@ export const publishController = createPublishController({
           noAi.click();
         }
 
-        let inputs = Array.from(dialog.querySelectorAll("input"))
+        const inputs = Array.from(dialog.querySelectorAll("input"))
           .filter((element) => visible(element)) as HTMLInputElement[];
 
-        if (inputs.length < 2) {
-          const scheduleSwitch = (Array.from(dialog.querySelectorAll("button, [role='switch'], .arco-switch, .semi-switch, span, div")) as any[])
-            .filter(visible)
-            .find((element) => normalize(element.textContent).includes("定时发布") || element.getAttribute("role") === "switch");
-          if (scheduleSwitch instanceof HTMLElement) {
-            scheduleSwitch.click();
-          }
-          inputs = Array.from(dialog.querySelectorAll("input")).filter((element) => visible(element)) as HTMLInputElement[];
-        }
-
-        const dateInput = inputs.find((input) => /^\d{4}-\d{2}-\d{2}$/.test(input.value))
+        const dateInput = inputs.find((input) => /^\d{4}[-/]\d{2}[-/]\d{2}$/.test(input.value))
           ?? inputs.find((input) => normalize(input.getAttribute("placeholder")).includes("日期"))
           ?? inputs[0];
         const timeInput = inputs.find((input) => /^\d{2}:\d{2}$/.test(input.value))
