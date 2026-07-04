@@ -710,15 +710,40 @@ export const publishController = createPublishController({
 
       const pickerInputs = activePage.locator(".arco-modal input.arco-picker-start-time, [role='dialog'] input.arco-picker-start-time");
       await pickerInputs.first().waitFor({ timeout: 15000 });
-      await pickerInputs.nth(0).click({ clickCount: 3 });
-      await activePage.keyboard.press("Control+A");
-      await activePage.keyboard.type(plannedDate);
-      await activePage.keyboard.press("Enter");
 
-      await pickerInputs.nth(1).click({ clickCount: 3 });
-      await activePage.keyboard.press("Control+A");
-      await activePage.keyboard.type(plannedTime);
-      await activePage.keyboard.press("Enter");
+      async function fillPickerValues(dateText: string, timeText: string) {
+        await pickerInputs.nth(0).scrollIntoViewIfNeeded();
+        await pickerInputs.nth(0).fill(dateText);
+        await activePage.keyboard.press("Tab");
+        await activePage.waitForTimeout(200);
+        await pickerInputs.nth(1).fill(timeText);
+        await activePage.keyboard.press("Tab");
+        await activePage.waitForTimeout(300);
+      }
+
+      async function readPickerValues() {
+        return activePage.evaluate(() => {
+          const visible = (element: Element) => {
+            const style = window.getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+            return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+          };
+          const inputs = Array.from(document.querySelectorAll(".arco-modal input.arco-picker-start-time, [role='dialog'] input.arco-picker-start-time"))
+            .filter(visible) as HTMLInputElement[];
+          return {
+            date: inputs[0]?.value ?? "",
+            time: inputs[1]?.value ?? ""
+          };
+        });
+      }
+
+      const normalizeDateValue = (value: string) => value.replace(/\//g, "-").trim();
+      await fillPickerValues(plannedDate, plannedTime);
+      let current = await readPickerValues();
+      if (normalizeDateValue(current.date) !== plannedDate || current.time.trim() !== plannedTime) {
+        await fillPickerValues(plannedDate.replace(/-/g, "/"), plannedTime);
+        current = await readPickerValues();
+      }
 
       await activePage.waitForFunction((args: any) => {
         const [dateValue, timeValue] = args as [string, string];
