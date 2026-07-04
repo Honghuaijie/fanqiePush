@@ -150,6 +150,12 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
       await session.openChapterManager(currentBookName);
       appendLog("正在打开新建章节编辑器。");
       await session.openNewChapterEditor();
+      const editorSnapshot = await session.inspect();
+      if (editorSnapshot.url.includes("/publish/")
+        && editorSnapshot.visibleText.length > 0
+        && !editorSnapshot.visibleText.join(" ").includes(currentBookName)) {
+        throw new Error(`已打开编辑器，但页面不是《${currentBookName}》，请停止后重新开始发布。`);
+      }
     } catch (error) {
       const nextSnapshot = await session.inspect();
       if (isLoginSnapshot(nextSnapshot)) {
@@ -897,19 +903,25 @@ export const publishController = createPublishController({
           clickByText("关闭");
 
           const clickableSelector = "a, button, [role='button'], [class*='btn'], [class*='Btn'], [class*='button'], [class*='Button'], [class*='arco-btn']";
-          const textMatches = Array.from(document.querySelectorAll("body *"))
-            .filter((element) => visible(element) && normalize(element.textContent).includes("章节管理"))
+          const bookScopes = Array.from(document.querySelectorAll("body *"))
+            .filter((element) => visible(element) && normalize(element.textContent).includes(targetBookName) && normalize(element.textContent).includes("章节管理"))
             .sort((left, right) => normalize(left.textContent).length - normalize(right.textContent).length);
 
-          const exactMatch = textMatches.find((element) => normalize(element.textContent) === "章节管理");
-          const scopedMatch = exactMatch ?? textMatches.find((element) => {
-            let current = element;
-            for (let depth = 0; current && depth < 10; depth += 1) {
-              if (normalize(current.textContent).includes(targetBookName)) return true;
-              current = current.parentElement;
+          let scopedMatch = null;
+          for (const scope of bookScopes) {
+            const candidates = [scope, ...Array.from(scope.querySelectorAll("a, button, [role='button'], span, div"))]
+              .filter((element) => visible(element) && normalize(element.textContent).includes("章节管理"))
+              .sort((left, right) => {
+                const leftExact = normalize(left.textContent) === "章节管理" ? 0 : 1;
+                const rightExact = normalize(right.textContent) === "章节管理" ? 0 : 1;
+                if (leftExact !== rightExact) return leftExact - rightExact;
+                return normalize(left.textContent).length - normalize(right.textContent).length;
+              });
+            if (candidates[0]) {
+              scopedMatch = candidates[0];
+              break;
             }
-            return false;
-          }) ?? textMatches[0];
+          }
 
           let target = scopedMatch instanceof HTMLElement ? scopedMatch.closest(clickableSelector) : null;
           if (!target && scopedMatch instanceof HTMLElement && normalize(scopedMatch.textContent) === "章节管理") {
