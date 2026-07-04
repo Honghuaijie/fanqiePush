@@ -19,7 +19,7 @@ interface ChapterNameMatch {
 
 const FILE_NAME_PATTERNS: Array<(baseName: string) => ChapterNameMatch | null> = [
   (baseName) => {
-    const match = baseName.match(/^第(\d+)章(?:\s+(.+))?$/u);
+    const match = baseName.match(/^第(\d+)章(?:[\s._-]+(.+))?$/u);
     if (!match) return null;
     return {
       chapterNumber: Number(match[1]),

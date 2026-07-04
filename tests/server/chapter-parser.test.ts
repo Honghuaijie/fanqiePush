@@ -15,6 +15,18 @@ describe("chapter parser", () => {
       title: "第1章 夜雨"
     });
 
+    expect(parseChapterFileName("第001章_这算我弄坏的吗.md")).toEqual({
+      chapterNumber: 1,
+      displayNumber: "001",
+      title: "第001章 这算我弄坏的吗"
+    });
+
+    expect(parseChapterFileName("第002章-你管这叫魔猿.md")).toEqual({
+      chapterNumber: 2,
+      displayNumber: "002",
+      title: "第002章 你管这叫魔猿"
+    });
+
     expect(parseChapterFileName("001-风起.md")).toEqual({
       chapterNumber: 1,
       displayNumber: "001",
