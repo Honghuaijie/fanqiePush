@@ -782,6 +782,33 @@ export const publishController = createPublishController({
 
     }
 
+    async function assertPublishSettingsTime(plannedDate: string, plannedTime: string) {
+      const current = await activePage.evaluate(() => {
+        const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
+        const visible = (element: Element) => {
+          const style = window.getComputedStyle(element);
+          const rect = element.getBoundingClientRect();
+          return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+        };
+        const dialog = Array.from(document.querySelectorAll("[role='dialog'], .arco-modal, .semi-modal, body > div"))
+          .filter(visible)
+          .find((element) => normalize(element.textContent).includes("发布设置") && normalize(element.textContent).includes("确认发布"))
+          ?? document.body;
+        const inputs = Array.from(dialog.querySelectorAll("input.arco-picker-start-time"))
+          .filter(visible) as HTMLInputElement[];
+        return {
+          date: inputs[0]?.value ?? "",
+          time: inputs[1]?.value ?? ""
+        };
+      });
+      const actualDate = current.date.replace(/\//g, "-").trim();
+      const actualTime = current.time.trim();
+      if (actualDate !== plannedDate || actualTime !== plannedTime) {
+        throw new Error(`定时发布时间确认失败：计划为 ${plannedDate} ${plannedTime}，页面实际为 ${current.date || "空"} ${current.time || "空"}。`);
+      }
+      return { date: actualDate, time: actualTime };
+    }
+
     async function waitForPublishSubmissionResult() {
       const result = await activePage.waitForFunction(() => {
         const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
@@ -1072,6 +1099,8 @@ export const publishController = createPublishController({
         log?.(`正在开启定时发布并填写 ${plannedDate} ${plannedTime}。`);
         await applyPublishSettings(plannedDate, plannedTime);
         await activePage.waitForTimeout(1000);
+        const confirmedTime = await assertPublishSettingsTime(plannedDate, plannedTime);
+        log?.(`已确认页面定时时间：${confirmedTime.date} ${confirmedTime.time}。`, "success");
         log?.("正在点击确认发布。");
         await clickVisibleButton("确认发布", { timeout: 15000 });
         log?.("正在确认番茄返回的发布结果。");
