@@ -722,10 +722,10 @@ export const publishController = createPublishController({
         await pickerInputs.nth(0).scrollIntoViewIfNeeded();
         await pickerInputs.nth(0).fill(dateText);
         await activePage.keyboard.press("Tab");
-        await activePage.waitForTimeout(200);
+        await activePage.waitForTimeout(300);
         await pickerInputs.nth(1).fill(timeText);
         await activePage.keyboard.press("Tab");
-        await activePage.waitForTimeout(300);
+        await activePage.waitForTimeout(500);
       }
 
       async function readPickerValues() {
@@ -745,11 +745,23 @@ export const publishController = createPublishController({
       }
 
       const normalizeDateValue = (value: string) => value.replace(/\//g, "-").trim();
-      await fillPickerValues(plannedDate, plannedTime);
       let current = await readPickerValues();
-      if (normalizeDateValue(current.date) !== plannedDate || current.time.trim() !== plannedTime) {
-        await fillPickerValues(plannedDate.replace(/-/g, "/"), plannedTime);
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        const dateText = attempt === 2 ? plannedDate.replace(/-/g, "/") : plannedDate;
+        await fillPickerValues(dateText, plannedTime);
+        await activePage.waitForTimeout(1000);
         current = await readPickerValues();
+        if (normalizeDateValue(current.date) === plannedDate && current.time.trim() === plannedTime) {
+          await activePage.waitForTimeout(1000);
+          current = await readPickerValues();
+          if (normalizeDateValue(current.date) === plannedDate && current.time.trim() === plannedTime) {
+            break;
+          }
+        }
+      }
+
+      if (normalizeDateValue(current.date) !== plannedDate || current.time.trim() !== plannedTime) {
+        throw new Error(`定时发布时间填写失败：计划为 ${plannedDate} ${plannedTime}，页面实际为 ${current.date || "空"} ${current.time || "空"}。`);
       }
 
       await activePage.waitForFunction((args: any) => {
