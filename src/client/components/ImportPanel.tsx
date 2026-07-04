@@ -36,10 +36,21 @@ export function ImportPanel(props: ImportPanelProps) {
             <dd>{props.importedBook.recognizedChapters}</dd>
           </div>
           <div>
+            <dt>自动编号</dt>
+            <dd>{props.importedBook.autoNumberedChapters}</dd>
+          </div>
+          <div>
             <dt>发布记录</dt>
             <dd>{props.importedBook.hasPublishLog ? "已读取" : "未创建"}</dd>
           </div>
         </dl>
+      ) : null}
+      {props.importedBook?.warnings.length ? (
+        <div className="warning-list">
+          {props.importedBook.warnings.map((warning) => (
+            <p key={warning}>{warning}</p>
+          ))}
+        </div>
       ) : null}
     </section>
   );

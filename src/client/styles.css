@@ -145,7 +145,7 @@ button.secondary {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
   margin: 14px 0 0;
 }
@@ -202,6 +202,23 @@ th {
 
 .error-text {
   color: #cf222e;
+}
+
+.warning-list {
+  border: 1px solid #f0c36d;
+  border-radius: 6px;
+  background: #fff8e6;
+  color: #7a4d00;
+  margin-top: 12px;
+  padding: 10px 12px;
+}
+
+.warning-list p {
+  margin: 0;
+}
+
+.warning-list p + p {
+  margin-top: 6px;
 }
 
 .status-pill {

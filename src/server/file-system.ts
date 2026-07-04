@@ -10,6 +10,8 @@ export interface ImportedBook {
   folderPath: string;
   totalMarkdownFiles: number;
   recognizedChapters: number;
+  autoNumberedChapters: number;
+  warnings: string[];
   hasPublishLog: boolean;
   chapters: Chapter[];
   publishLog: PublishLog;
@@ -20,14 +22,21 @@ export async function importBookFolder(folderPath: string): Promise<ImportedBook
   const bookName = path.basename(folderPath);
   const markdownFiles = entries
     .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
-    .map((entry) => entry.name);
+    .map((entry) => entry.name)
+    .sort((left, right) => left.localeCompare(right, "zh-CN", { numeric: true }));
 
   const publishLog = await readPublishLog(folderPath, bookName);
   const chapters: Chapter[] = [];
+  const warnings: string[] = [];
+  let autoNumberedChapters = 0;
 
-  for (const fileName of markdownFiles) {
-    const parsedName = parseChapterFileName(fileName);
+  for (const [index, fileName] of markdownFiles.entries()) {
+    const parsedName = parseChapterFileName(fileName, index + 1);
     if (!parsedName) continue;
+
+    if (parsedName.autoNumbered) {
+      autoNumberedChapters += 1;
+    }
 
     const filePath = path.join(folderPath, fileName);
     const markdown = await fs.readFile(filePath, "utf8");
@@ -39,18 +48,24 @@ export async function importBookFolder(folderPath: string): Promise<ImportedBook
       filePath,
       body: parsedBody.body,
       characterCount: parsedBody.characterCount,
-      status: "pending"
+      status: "pending",
+      autoNumbered: parsedName.autoNumbered
     });
   }
 
   chapters.sort((a, b) => a.chapterNumber - b.chapterNumber);
   const mergedChapters = mergeChaptersWithLog(chapters, publishLog.log);
+  if (autoNumberedChapters > 0) {
+    warnings.push(`有 ${autoNumberedChapters} 个章节未从文件名识别到章节号，已按文件顺序自动编号，请确认顺序。`);
+  }
 
   return {
     bookName,
     folderPath,
     totalMarkdownFiles: markdownFiles.length,
     recognizedChapters: mergedChapters.length,
+    autoNumberedChapters,
+    warnings,
     hasPublishLog: publishLog.exists,
     chapters: mergedChapters,
     publishLog: publishLog.log ?? createEmptyPublishLog(bookName)

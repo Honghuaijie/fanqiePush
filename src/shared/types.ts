@@ -11,6 +11,7 @@ export interface Chapter {
   body: string;
   characterCount: number;
   status: ChapterStatus;
+  autoNumbered?: boolean;
 }
 
 export interface PublishPlanItem {

@@ -5,6 +5,8 @@ export interface ImportBookResponse {
   folderPath: string;
   totalMarkdownFiles: number;
   recognizedChapters: number;
+  autoNumberedChapters: number;
+  warnings: string[];
   hasPublishLog: boolean;
   chapters: Chapter[];
 }

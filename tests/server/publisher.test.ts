@@ -67,7 +67,7 @@ describe("publisher controller", () => {
       message: "已打开新建章节编辑器，准备定时发布当前章。"
     });
     expect(opened).toEqual([
-      "/books/测试书/.fanqie-browser-profile",
+      path.join("/books/测试书", ".fanqie-browser-profile"),
       "https://fanqienovel.com/main/writer/book-manage",
       "chapter-manager:测试书",
       "new-chapter-editor"
