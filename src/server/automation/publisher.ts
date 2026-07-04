@@ -24,11 +24,19 @@ declare const KeyboardEvent: any;
 export const FANQIE_WRITER_BOOK_MANAGE_URL = "https://fanqienovel.com/main/writer/book-manage";
 
 export type PublishRunStatus = "idle" | "running" | "paused" | "waiting-login" | "stopped";
+export type PublishLogLevel = "info" | "success" | "warning" | "error";
+
+export interface PublishRunLogEntry {
+  time: string;
+  level: PublishLogLevel;
+  message: string;
+}
 
 export interface PublishRunState {
   status: PublishRunStatus;
   currentChapter?: number;
   message?: string;
+  logs?: PublishRunLogEntry[];
 }
 
 export interface BrowserPageSnapshot {
@@ -64,8 +72,8 @@ export interface BrowserSession {
   inspect(): Promise<BrowserPageSnapshot>;
   openChapterManager(bookName: string): Promise<void>;
   openNewChapterEditor(): Promise<void>;
-  saveDraftChapter(chapter: DraftChapterInput): Promise<void>;
-  scheduleChapter?(chapter: DraftChapterInput, plannedDate: string, plannedTime: string): Promise<void>;
+  saveDraftChapter(chapter: DraftChapterInput, log?: (message: string, level?: PublishLogLevel) => void): Promise<void>;
+  scheduleChapter?(chapter: DraftChapterInput, plannedDate: string, plannedTime: string, log?: (message: string, level?: PublishLogLevel) => void): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -108,45 +116,59 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
   let currentBookName: string | null = null;
   let currentFolderPath: string | null = null;
   let currentItems: PublishPlanItem[] = [];
+  let logs: PublishRunLogEntry[] = [];
+
+  function withLogs(nextState: PublishRunState): PublishRunState {
+    state = { ...nextState, logs: [...logs] };
+    return state;
+  }
+
+  function appendLog(message: string, level: PublishLogLevel = "info") {
+    logs = [...logs, { time: new Date().toISOString(), level, message }].slice(-100);
+    state = { ...state, logs: [...logs] };
+  }
 
   async function openCurrentChapterEditor(): Promise<PublishRunState> {
     if (!session || !currentBookName) {
       throw new Error("独立浏览器尚未启动，请先点击开始发布。");
     }
 
+    appendLog("正在打开番茄作者后台。");
     await session.goto(FANQIE_WRITER_BOOK_MANAGE_URL);
     const snapshot = await session.inspect();
     if (isLoginSnapshot(snapshot)) {
-      state = {
+      appendLog("检测到未登录，等待手动登录。", "warning");
+      return withLogs({
         status: "waiting-login",
         currentChapter: state.currentChapter ?? currentItems[0]?.chapterNumber,
         message: "请在弹出的 Chrome 窗口中完成番茄登录，登录成功后点击继续。"
-      };
-      return state;
+      });
     }
 
     try {
+      appendLog(`正在打开《${currentBookName}》的章节管理。`);
       await session.openChapterManager(currentBookName);
+      appendLog("正在打开新建章节编辑器。");
       await session.openNewChapterEditor();
     } catch (error) {
       const nextSnapshot = await session.inspect();
       if (isLoginSnapshot(nextSnapshot)) {
-        state = {
+        appendLog("检测到未登录，等待手动登录。", "warning");
+        return withLogs({
           status: "waiting-login",
           currentChapter: state.currentChapter ?? currentItems[0]?.chapterNumber,
           message: "请在弹出的 Chrome 窗口中完成番茄登录，登录成功后点击继续。"
-        };
-        return state;
+        });
       }
       throw error;
     }
 
-    state = {
+    appendLog("已打开新建章节编辑器，准备定时发布当前章。", "success");
+    return withLogs({
       status: "paused",
       currentChapter: state.currentChapter ?? currentItems[0]?.chapterNumber,
       message: "已打开新建章节编辑器，准备定时发布当前章。"
-    };
-    return state;
+    });
   }
 
   async function getCurrentChapterContext() {
@@ -171,7 +193,7 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
 
   return {
     getState() {
-      return state;
+      return { ...state, logs: [...logs] };
     },
 
     async start(input) {
@@ -179,27 +201,29 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
         currentBookName = currentBookName ?? input.bookName;
         currentFolderPath = currentFolderPath ?? input.folderPath;
         currentItems = input.items.length > 0 ? input.items : currentItems;
-        state = { ...state, currentChapter: state.currentChapter ?? input.items[0]?.chapterNumber };
+        state = { ...state, currentChapter: state.currentChapter ?? input.items[0]?.chapterNumber, logs: [...logs] };
         return openCurrentChapterEditor();
       }
 
       const profileDir = path.join(input.folderPath, ".fanqie-browser-profile");
       try {
+        logs = [];
         session = await launcher.openBrowser(profileDir);
         currentBookName = input.bookName;
         currentFolderPath = input.folderPath;
         currentItems = input.items;
-        state = {
+        withLogs({
           status: "running",
           currentChapter: input.items[0]?.chapterNumber,
           message: "正在打开番茄作者后台。"
-        };
+        });
         return await openCurrentChapterEditor();
       } catch (error) {
         session = null;
         currentBookName = null;
         currentFolderPath = null;
         currentItems = [];
+        appendLog(error instanceof Error ? error.message : "启动发布失败。", "error");
         if (isBrowserProfileInUseError(error)) {
           throw new Error("发布专用浏览器已经在运行。请先关闭工具打开的那个独立 Chrome 窗口，或者在工具里点“停止发布”后再重新开始。");
         }
@@ -220,12 +244,13 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
         throw new Error("独立浏览器尚未启动，请先点击开始发布。");
       }
 
+      appendLog(`正在打开《${currentBookName}》的章节管理。`);
       await session.openChapterManager(currentBookName);
-      state = {
+      appendLog("已进入章节管理页面。", "success");
+      return withLogs({
         ...state,
         message: "已进入章节管理页面，等待下一步适配。"
-      };
-      return state;
+      });
     },
 
     async openNewChapterEditor() {
@@ -233,12 +258,13 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
         throw new Error("独立浏览器尚未启动，请先点击开始发布。");
       }
 
+      appendLog("正在打开新建章节编辑器。");
       await session.openNewChapterEditor();
-      state = {
+      appendLog("已打开新建章节编辑器。", "success");
+      return withLogs({
         ...state,
         message: "已打开新建章节编辑器，仅用于草稿适配，未提交发布。"
-      };
-      return state;
+      });
     },
 
     async continueAfterLogin() {
@@ -246,6 +272,7 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
         throw new Error("独立浏览器尚未启动，请先点击开始发布。");
       }
 
+      appendLog("正在确认登录状态并继续发布。");
       return openCurrentChapterEditor();
     },
 
@@ -254,13 +281,19 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
         throw new Error("独立浏览器尚未启动，请先点击开始发布。");
       }
 
-      await session.saveDraftChapter(chapter);
-      state = {
+      appendLog(`正在保存第${chapter.chapterNumber}章草稿。`);
+      try {
+        await session.saveDraftChapter(chapter, appendLog);
+      } catch (error) {
+        appendLog(error instanceof Error ? error.message : "保存草稿失败。", "error");
+        throw error;
+      }
+      appendLog(`第${chapter.chapterNumber}章已保存为草稿。`, "success");
+      return withLogs({
         ...state,
         currentChapter: chapter.chapterNumber,
         message: `第${chapter.chapterNumber}章已保存为草稿，未进入发布设置。`
-      };
-      return state;
+      });
     },
 
     async saveCurrentDraft() {
@@ -274,11 +307,17 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
       }
       const { chapter, currentPlanItem, imported } = await getCurrentChapterContext();
 
-      await session.saveDraftChapter({
-        chapterNumber: chapter.chapterNumber,
-        title: chapter.title,
-        body: chapter.body
-      });
+      appendLog(`正在保存第${chapter.chapterNumber}章草稿。`);
+      try {
+        await session.saveDraftChapter({
+          chapterNumber: chapter.chapterNumber,
+          title: chapter.title,
+          body: chapter.body
+        }, appendLog);
+      } catch (error) {
+        appendLog(error instanceof Error ? error.message : "保存草稿失败。", "error");
+        throw error;
+      }
 
       const nextLog = updateChapterStatus(imported.publishLog, {
         chapterNumber: chapter.chapterNumber,
@@ -292,12 +331,12 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
       });
       await writePublishLog(folderPath, nextLog);
 
-      state = {
+      appendLog(`第${chapter.chapterNumber}章已保存为草稿。`, "success");
+      return withLogs({
         ...state,
         currentChapter: chapter.chapterNumber,
         message: `第${chapter.chapterNumber}章已保存为草稿，未进入发布设置。`
-      };
-      return state;
+      });
     },
 
     async scheduleCurrentChapter() {
@@ -317,11 +356,17 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
         throw new Error(`第${chapter.chapterNumber}章正文不足 1000 字，无法进入番茄定时发布流程。`);
       }
 
-      await session.scheduleChapter({
-        chapterNumber: chapter.chapterNumber,
-        title: chapter.title,
-        body: chapter.body
-      }, currentPlanItem.plannedDate, currentPlanItem.plannedTime);
+      appendLog(`正在提交第${chapter.chapterNumber}章定时发布。`);
+      try {
+        await session.scheduleChapter({
+          chapterNumber: chapter.chapterNumber,
+          title: chapter.title,
+          body: chapter.body
+        }, currentPlanItem.plannedDate, currentPlanItem.plannedTime, appendLog);
+      } catch (error) {
+        appendLog(error instanceof Error ? error.message : "定时发布失败。", "error");
+        throw error;
+      }
 
       const nextLog = updateChapterStatus(imported.publishLog, {
         chapterNumber: chapter.chapterNumber,
@@ -335,12 +380,12 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
       });
       await writePublishLog(folderPath, nextLog);
 
-      state = {
+      appendLog(`第${chapter.chapterNumber}章已定时发布：${currentPlanItem.plannedDate} ${currentPlanItem.plannedTime}。`, "success");
+      return withLogs({
         ...state,
         currentChapter: chapter.chapterNumber,
         message: `第${chapter.chapterNumber}章已定时发布：${currentPlanItem.plannedDate} ${currentPlanItem.plannedTime}。`
-      };
-      return state;
+      });
     },
 
     async stop() {
@@ -349,8 +394,8 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
       currentBookName = null;
       currentFolderPath = null;
       currentItems = [];
-      state = { status: "stopped", message: "已停止发布任务。" };
-      return state;
+      appendLog("已停止发布任务。", "warning");
+      return withLogs({ status: "stopped", message: "已停止发布任务。" });
     }
   };
 }
@@ -957,21 +1002,30 @@ export const publishController = createPublishController({
           throw new Error("已经跳转到新建章节链接，但没有检测到章节编辑器。");
         }
       },
-      async saveDraftChapter(chapter) {
+      async saveDraftChapter(chapter, log) {
+        log?.(`正在填写第${chapter.chapterNumber}章标题和正文。`);
         await fillEditor(chapter);
+        log?.("正在点击存草稿。");
         await clickVisibleButton("存草稿");
         await activePage.waitForLoadState("domcontentloaded");
       },
-      async scheduleChapter(chapter, plannedDate, plannedTime) {
+      async scheduleChapter(chapter, plannedDate, plannedTime, log) {
+        log?.(`正在填写第${chapter.chapterNumber}章标题和正文。`);
         await fillEditor(chapter);
+        log?.("正在等待编辑器自动保存。");
         await waitForEditorSaved();
+        log?.("正在点击下一步进入检测流程。");
         await clickNextAndWaitForDetection();
+        log?.("正在打开发布设置。");
         await openPublishSettingsFromDetection();
 
         await waitForVisibleText("发布设置", 90000);
         await waitForVisibleText("确认发布", 90000);
+        log?.(`正在开启定时发布并填写 ${plannedDate} ${plannedTime}。`);
         await applyPublishSettings(plannedDate, plannedTime);
+        log?.("正在点击确认发布。");
         await clickVisibleButton("确认发布", { timeout: 15000 });
+        log?.("正在确认番茄返回的发布结果。");
         await waitForPublishSubmissionResult();
       },
       async close() {

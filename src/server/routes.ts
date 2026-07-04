@@ -121,7 +121,7 @@ export function createRoutes(): Router {
 
   const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
     const message = error instanceof Error ? error.message : "未知错误";
-    res.status(400).json({ error: message });
+    res.status(400).json({ error: message, state: publishController.getState() });
   };
 
   router.use(errorHandler);

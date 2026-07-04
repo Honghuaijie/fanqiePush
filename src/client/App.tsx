@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { PublishPlanItem } from "../shared/types";
-import { continuePublish, generatePlan, importBook, scheduleCurrentChapter, startPublish, stopPublish, type ImportBookResponse, type PublishRunState } from "./api";
+import { ApiRequestError, continuePublish, generatePlan, importBook, scheduleCurrentChapter, startPublish, stopPublish, type ImportBookResponse, type PublishRunState } from "./api";
 import { FinalPreview } from "./components/FinalPreview";
 import { ImportPanel } from "./components/ImportPanel";
 import { PlanTable } from "./components/PlanTable";
@@ -82,7 +82,8 @@ export function App() {
       setError(scheduledState.message ?? null);
     } catch (publishError) {
       const message = publishError instanceof Error ? publishError.message : "启动发布失败";
-      setPublishState({ status: "stopped", message });
+      const errorState = publishError instanceof ApiRequestError ? publishError.state : undefined;
+      setPublishState({ ...(errorState ?? {}), status: "stopped", message });
       setError(message);
     }
   }
@@ -107,7 +108,8 @@ export function App() {
       setError(scheduledState.message ?? null);
     } catch (continueError) {
       const message = continueError instanceof Error ? continueError.message : "继续发布失败";
-      setPublishState({ status: "stopped", message });
+      const errorState = continueError instanceof ApiRequestError ? continueError.state : undefined;
+      setPublishState({ ...(errorState ?? {}), status: "stopped", message });
       setError(message);
     }
   }
@@ -158,6 +160,7 @@ export function App() {
           statusText={publishState.status}
           currentChapter={publishState.currentChapter}
           message={publishState.message}
+          logs={publishState.logs ?? []}
           onOpenPreview={() => setPreviewOpen(true)}
           onContinue={handleContinuePublish}
           onStop={handleStopPublish}

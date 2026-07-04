@@ -35,6 +35,23 @@ export interface PublishRunState {
   status: "idle" | "running" | "paused" | "waiting-login" | "stopped";
   currentChapter?: number;
   message?: string;
+  logs?: PublishRunLogEntry[];
+}
+
+export interface PublishRunLogEntry {
+  time: string;
+  level: "info" | "success" | "warning" | "error";
+  message: string;
+}
+
+export class ApiRequestError extends Error {
+  state?: PublishRunState;
+
+  constructor(message: string, state?: PublishRunState) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.state = state;
+  }
 }
 
 export async function startPublish(input: {
@@ -70,7 +87,7 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
 
   const payload = await response.json();
   if (!response.ok) {
-    throw new Error(payload.error ?? "请求失败");
+    throw new ApiRequestError(payload.error ?? "请求失败", payload.state);
   }
   return payload as T;
 }

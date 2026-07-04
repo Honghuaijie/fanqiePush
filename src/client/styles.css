@@ -201,14 +201,83 @@ th {
 }
 
 .controls {
-  display: flex;
+  display: grid;
+  gap: 14px;
+}
+
+.controls-row {
   align-items: center;
+  display: flex;
   gap: 10px;
 }
 
-.controls h2 {
+.controls-row h2 {
   margin-right: auto;
   margin-bottom: 0;
+}
+
+.run-console {
+  background: #f6f8fa;
+  border: 1px solid #d8dee4;
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+  max-height: 240px;
+  overflow: auto;
+  padding: 12px;
+}
+
+.console-heading {
+  align-items: center;
+  color: #57606a;
+  display: flex;
+  font-size: 13px;
+  justify-content: space-between;
+}
+
+.console-heading h3 {
+  color: #24292f;
+  font-size: 15px;
+  margin: 0;
+}
+
+.console-list {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.console-line {
+  align-items: start;
+  color: #57606a;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 74px minmax(0, 1fr);
+  line-height: 1.45;
+}
+
+.console-line time {
+  color: #8c959f;
+  font-variant-numeric: tabular-nums;
+}
+
+.console-line.success span {
+  color: #1a7f37;
+}
+
+.console-line.warning span {
+  color: #9a6700;
+}
+
+.console-line.error span {
+  color: #cf222e;
+}
+
+.console-empty {
+  color: #8c959f;
+  margin: 0;
 }
 
 .error-text {
@@ -355,7 +424,12 @@ th {
     grid-template-columns: 1fr;
   }
 
-  .controls h2 {
+  .controls-row {
+    align-items: stretch;
+    display: grid;
+  }
+
+  .controls-row h2 {
     margin-right: 0;
   }
 }

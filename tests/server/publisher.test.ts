@@ -61,7 +61,7 @@ describe("publisher controller", () => {
       items: [planItem]
     });
 
-    expect(state).toEqual({
+    expect(state).toMatchObject({
       status: "paused",
       currentChapter: 1,
       message: "已打开新建章节编辑器，准备定时发布当前章。"
@@ -71,6 +71,38 @@ describe("publisher controller", () => {
       "https://fanqienovel.com/main/writer/book-manage",
       "chapter-manager:测试书",
       "new-chapter-editor"
+    ]);
+  });
+
+  it("returns step logs while opening the chapter editor", async () => {
+    const controller = createPublishController({
+      openBrowser: async () => ({
+        goto: async () => undefined,
+        inspect: async () => ({
+          url: "https://fanqienovel.com/main/writer/book-manage",
+          title: "作者专区",
+          visibleText: [],
+          buttons: [],
+          links: []
+        }),
+        openChapterManager: async () => undefined,
+        openNewChapterEditor: async () => undefined,
+        saveDraftChapter: async () => undefined,
+        close: async () => undefined
+      })
+    });
+
+    const state = await controller.start({
+      bookName: "测试书",
+      folderPath: "/books/测试书",
+      items: [planItem]
+    });
+
+    expect(state.logs?.map((log) => log.message)).toEqual([
+      "正在打开番茄作者后台。",
+      "正在打开《测试书》的章节管理。",
+      "正在打开新建章节编辑器。",
+      "已打开新建章节编辑器，准备定时发布当前章。"
     ]);
   });
 
@@ -166,7 +198,7 @@ describe("publisher controller", () => {
       items: [planItem]
     });
 
-    expect(state).toEqual({
+    expect(state).toMatchObject({
       status: "waiting-login",
       currentChapter: 1,
       message: "请在弹出的 Chrome 窗口中完成番茄登录，登录成功后点击继续。"
@@ -218,7 +250,7 @@ describe("publisher controller", () => {
     loggedIn = true;
     const state = await controller.continueAfterLogin();
 
-    expect(state).toEqual({
+    expect(state).toMatchObject({
       status: "paused",
       currentChapter: 1,
       message: "已打开新建章节编辑器，准备定时发布当前章。"
@@ -269,7 +301,7 @@ describe("publisher controller", () => {
       items: [planItem]
     });
 
-    expect(state).toEqual({
+    expect(state).toMatchObject({
       status: "waiting-login",
       currentChapter: 1,
       message: "请在弹出的 Chrome 窗口中完成番茄登录，登录成功后点击继续。"
@@ -605,3 +637,4 @@ describe("publisher controller", () => {
     await expect(access(path.join(bookDir, ".fanqie-publish.json"))).rejects.toThrow();
   });
 });
+
