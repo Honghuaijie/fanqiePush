@@ -363,6 +363,8 @@ export const publishController = createPublishController({
       viewport: { width: 1400, height: 900 }
     });
     let activePage = context.pages()[0] ?? (await context.newPage());
+    await context.addInitScript("window.__name = window.__name || ((target) => target);");
+    await activePage.evaluate("window.__name = window.__name || ((target) => target);");
     await activePage.bringToFront();
 
     async function fillEditor(chapter: DraftChapterInput) {
