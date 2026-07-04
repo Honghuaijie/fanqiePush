@@ -718,6 +718,40 @@ export const publishController = createPublishController({
       const pickerInputs = activePage.locator(".arco-modal input.arco-picker-start-time, [role='dialog'] input.arco-picker-start-time");
       await pickerInputs.first().waitFor({ timeout: 15000 });
 
+      async function clickPickerConfirmButton() {
+        return activePage.evaluate(() => {
+          const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
+          const visible = (element: Element) => {
+            const style = window.getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+            return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+          };
+          const publishButton = (Array.from(document.querySelectorAll("button, [role='button'], span, div")) as HTMLElement[])
+            .filter(visible)
+            .find((element) => normalize(element.textContent) === "确认发布");
+          const publishRect = publishButton?.getBoundingClientRect();
+          const candidates = (Array.from(document.querySelectorAll("button, [role='button'], span, div")) as HTMLElement[])
+            .filter(visible)
+            .filter((element) => normalize(element.textContent) === "确定")
+            .filter((element) => {
+              if (!publishRect) return true;
+              const rect = element.getBoundingClientRect();
+              return rect.bottom < publishRect.top || Math.abs(rect.left - publishRect.left) > 80;
+            })
+            .sort((left, right) => {
+              const leftRect = left.getBoundingClientRect();
+              const rightRect = right.getBoundingClientRect();
+              return rightRect.top - leftRect.top;
+            });
+          const target = candidates[0];
+          if (target instanceof HTMLElement) {
+            target.click();
+            return true;
+          }
+          return false;
+        });
+      }
+
       async function pickDateValue(dateText: string) {
         const [yearText, monthText, dayText] = dateText.split("-");
         const targetMonthIndex = Number(yearText) * 12 + Number(monthText);
@@ -810,6 +844,12 @@ export const publishController = createPublishController({
         if (!clicked) {
           await pickerInputs.nth(0).fill(dateText);
           await activePage.keyboard.press("Tab");
+        } else {
+          await activePage.waitForTimeout(300);
+          const confirmed = await clickPickerConfirmButton();
+          if (!confirmed) {
+            await activePage.keyboard.press("Tab");
+          }
         }
         await activePage.waitForTimeout(500);
       }
@@ -818,27 +858,7 @@ export const publishController = createPublishController({
         await pickDateValue(dateText.replace(/\//g, "-"));
         await pickerInputs.nth(1).click();
         await pickerInputs.nth(1).fill(timeText);
-        const confirmed = await activePage.evaluate(() => {
-          const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
-          const visible = (element: Element) => {
-            const style = window.getComputedStyle(element);
-            const rect = element.getBoundingClientRect();
-            return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
-          };
-          const target = Array.from(document.querySelectorAll("button, [role='button'], span, div"))
-            .filter(visible)
-            .filter((element) => normalize(element.textContent) === "确定")
-            .sort((left, right) => {
-              const leftRect = left.getBoundingClientRect();
-              const rightRect = right.getBoundingClientRect();
-              return rightRect.top - leftRect.top;
-            })[0];
-          if (target instanceof HTMLElement) {
-            target.click();
-            return true;
-          }
-          return false;
-        });
+        const confirmed = await clickPickerConfirmButton();
         if (!confirmed) {
           await activePage.keyboard.press("Tab");
         }
