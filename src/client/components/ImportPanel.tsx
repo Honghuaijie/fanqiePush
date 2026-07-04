@@ -31,7 +31,7 @@ export function ImportPanel(props: ImportPanelProps) {
         />
       </label>
       <p className="helper-text">
-        可用占位符：{"{章节}"}、{"{章节名}"}。示例：第{"{章节}"}章_{"{章节名}"}.md、{"{章节}"}-{"{章节名}"}.md
+        可用占位符：{"{章节}"}、{"{章节名}"}。若您的章节命名是“第001章_这算我弄坏的吗.md”，则填写“第{"{章节}"}章_{"{章节名}"}.md”；若是“001-开局.md”，则填写“{"{章节}"}-{"{章节名}"}.md”。
       </p>
       {props.error ? <p className="error-text">{props.error}</p> : null}
       {props.importedBook ? (
