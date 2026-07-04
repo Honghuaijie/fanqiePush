@@ -108,6 +108,17 @@ body {
   color: #57606a;
 }
 
+.pattern-field {
+  margin-top: 12px;
+}
+
+.helper-text {
+  color: #687076;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 8px 0 0;
+}
+
 label {
   display: grid;
   gap: 6px;

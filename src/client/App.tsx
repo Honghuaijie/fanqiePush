@@ -16,6 +16,7 @@ const DEFAULT_DAILY_TIMES = ["09:30", "12:00", "19:00", "19:05"];
 
 export function App() {
   const [folderPath, setFolderPath] = useState("");
+  const [chapterFileNamePattern, setChapterFileNamePattern] = useState("");
   const [book, setBook] = useState<ImportBookResponse | null>(null);
   const [startChapter, setStartChapter] = useState("");
   const [endChapter, setEndChapter] = useState("");
@@ -32,7 +33,7 @@ export function App() {
   async function handleImport() {
     setError(null);
     try {
-      const imported = await importBook(folderPath);
+      const imported = await importBook(folderPath, chapterFileNamePattern.trim() || undefined);
       setBook(imported);
       setStartChapter(imported.chapters[0]?.chapterNumber.toString() ?? "");
       setEndChapter(imported.chapters.at(-1)?.chapterNumber.toString() ?? "");
@@ -100,7 +101,15 @@ export function App() {
         <button className="secondary" onClick={() => setFlowGuideOpen(true)}>查看发布流程</button>
       </header>
       <div className="content-grid">
-        <ImportPanel folderPath={folderPath} importedBook={book} onFolderPathChange={setFolderPath} onImport={handleImport} error={error} />
+        <ImportPanel
+          folderPath={folderPath}
+          chapterFileNamePattern={chapterFileNamePattern}
+          importedBook={book}
+          onFolderPathChange={setFolderPath}
+          onChapterFileNamePatternChange={setChapterFileNamePattern}
+          onImport={handleImport}
+          error={error}
+        />
         <RangePanel
           startChapter={startChapter}
           endChapter={endChapter}

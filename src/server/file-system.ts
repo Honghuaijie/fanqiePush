@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { PUBLISH_LOG_FILE } from "../shared/constants";
 import type { Chapter, PublishLog } from "../shared/types";
-import { parseChapterFileName, parseMarkdownBody } from "./chapter-parser";
+import { parseChapterFileName, parseChapterFileNameWithPattern, parseMarkdownBody } from "./chapter-parser";
 import { createEmptyPublishLog, mergeChaptersWithLog } from "./publish-log";
 
 export interface ImportedBook {
@@ -17,7 +17,11 @@ export interface ImportedBook {
   publishLog: PublishLog;
 }
 
-export async function importBookFolder(folderPath: string): Promise<ImportedBook> {
+export interface ImportBookFolderOptions {
+  chapterFileNamePattern?: string;
+}
+
+export async function importBookFolder(folderPath: string, options: ImportBookFolderOptions = {}): Promise<ImportedBook> {
   const entries = await fs.readdir(folderPath, { withFileTypes: true });
   const bookName = path.basename(folderPath);
   const markdownFiles = entries
@@ -29,10 +33,19 @@ export async function importBookFolder(folderPath: string): Promise<ImportedBook
   const chapters: Chapter[] = [];
   const warnings: string[] = [];
   let autoNumberedChapters = 0;
+  let unmatchedPatternFiles = 0;
+  const chapterFileNamePattern = options.chapterFileNamePattern?.trim();
 
   for (const [index, fileName] of markdownFiles.entries()) {
-    const parsedName = parseChapterFileName(fileName, index + 1);
-    if (!parsedName) continue;
+    const parsedName = chapterFileNamePattern
+      ? parseChapterFileNameWithPattern(fileName, chapterFileNamePattern)
+      : parseChapterFileName(fileName, index + 1);
+    if (!parsedName) {
+      if (chapterFileNamePattern) {
+        unmatchedPatternFiles += 1;
+      }
+      continue;
+    }
 
     if (parsedName.autoNumbered) {
       autoNumberedChapters += 1;
@@ -57,6 +70,9 @@ export async function importBookFolder(folderPath: string): Promise<ImportedBook
   const mergedChapters = mergeChaptersWithLog(chapters, publishLog.log);
   if (autoNumberedChapters > 0) {
     warnings.push(`有 ${autoNumberedChapters} 个章节未从文件名识别到章节号，已按文件顺序自动编号，请确认顺序。`);
+  }
+  if (unmatchedPatternFiles > 0) {
+    warnings.push(`有 ${unmatchedPatternFiles} 个 Markdown 文件不符合你填写的章节命名格式，已跳过。`);
   }
 
   return {

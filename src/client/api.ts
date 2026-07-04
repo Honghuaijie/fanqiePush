@@ -17,8 +17,8 @@ export interface GeneratePlanResponse {
   previewItems: PublishPlanItem[];
 }
 
-export async function importBook(folderPath: string): Promise<ImportBookResponse> {
-  return postJson("/api/import", { folderPath });
+export async function importBook(folderPath: string, chapterFileNamePattern?: string): Promise<ImportBookResponse> {
+  return postJson("/api/import", { folderPath, chapterFileNamePattern });
 }
 
 export async function generatePlan(input: {

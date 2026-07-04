@@ -40,6 +40,31 @@ const FILE_NAME_PATTERNS: Array<(baseName: string) => ChapterNameMatch | null> =
   }
 ];
 
+export function parseChapterFileNameWithPattern(fileName: string, pattern: string): ParsedChapterName | null {
+  if (!fileName.endsWith(".md")) return null;
+
+  const baseName = fileName.slice(0, -3).trim();
+  const patternBaseName = pattern.endsWith(".md") ? pattern.slice(0, -3).trim() : pattern.trim();
+  if (!baseName || !patternBaseName) return null;
+  if (!patternBaseName.includes("{章节}") || !patternBaseName.includes("{章节名}")) return null;
+
+  const regex = new RegExp(`^${escapePattern(patternBaseName)
+    .replace("\\{章节\\}", "(?<chapterNumber>\\d+)")
+    .replace("\\{章节名\\}", "(?<chapterName>.+)")}$`, "u");
+  const match = baseName.match(regex);
+  if (!match?.groups) return null;
+
+  const rawChapterNumber = match.groups.chapterNumber;
+  const chapterName = match.groups.chapterName?.trim();
+  if (!rawChapterNumber || !chapterName) return null;
+
+  return buildParsedChapterName({
+    chapterNumber: Number(rawChapterNumber),
+    displayNumber: rawChapterNumber,
+    chapterName
+  });
+}
+
 export function parseChapterFileName(fileName: string, fallbackNumber?: number): ParsedChapterName | null {
   if (!fileName.endsWith(".md")) return null;
 
@@ -69,6 +94,10 @@ export function parseChapterFileName(fileName: string, fallbackNumber?: number):
     }),
     autoNumbered: true
   };
+}
+
+function escapePattern(pattern: string): string {
+  return pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function buildParsedChapterName(input: {

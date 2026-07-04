@@ -64,4 +64,25 @@ describe("routes", () => {
       { chapterNumber: 2, title: "第002章 夜雨", autoNumbered: true }
     ]);
   });
+
+  it("imports chapters with a user supplied file name pattern", async () => {
+    tempDir = await mkdtemp(path.join(os.tmpdir(), "fanqie-pattern-book-"));
+    const bookDir = path.join(tempDir, "测试书");
+    await mkdir(bookDir);
+    await writeFile(path.join(bookDir, "第001章_这算我弄坏的吗.md"), "# 第001章 这算我弄坏的吗\n\n正文一", "utf8");
+    await writeFile(path.join(bookDir, "第002章_你管这叫魔猿.md"), "# 第002章 你管这叫魔猿\n\n正文二", "utf8");
+
+    const imported = await handleImportBook({
+      folderPath: bookDir,
+      chapterFileNamePattern: "第{章节}章_{章节名}.md"
+    });
+
+    expect(imported.recognizedChapters).toBe(2);
+    expect(imported.autoNumberedChapters).toBe(0);
+    expect(imported.warnings).toEqual([]);
+    expect(imported.chapters.map((chapter) => chapter.title)).toEqual([
+      "第001章 这算我弄坏的吗",
+      "第002章 你管这叫魔猿"
+    ]);
+  });
 });

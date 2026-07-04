@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseChapterFileName, parseMarkdownBody } from "../../src/server/chapter-parser";
+import { parseChapterFileName, parseChapterFileNameWithPattern, parseMarkdownBody } from "../../src/server/chapter-parser";
 
 describe("chapter parser", () => {
   it("parses supported chapter file names", () => {
@@ -70,6 +70,18 @@ describe("chapter parser", () => {
   it("rejects unsupported file names without fallback numbering", () => {
     expect(parseChapterFileName("开局.md")).toBeNull();
     expect(parseChapterFileName("第1章 开局.txt")).toBeNull();
+  });
+
+  it("parses chapter file names with a user supplied pattern", () => {
+    expect(parseChapterFileNameWithPattern("第001章_这算我弄坏的吗.md", "第{章节}章_{章节名}.md")).toEqual({
+      chapterNumber: 1,
+      displayNumber: "001",
+      title: "第001章 这算我弄坏的吗"
+    });
+  });
+
+  it("rejects chapter file names that do not match the user supplied pattern", () => {
+    expect(parseChapterFileNameWithPattern("第001章_这算我弄坏的吗.md", "{章节}-{章节名}.md")).toBeNull();
   });
 
   it("removes the first markdown heading from body content", () => {

@@ -4,7 +4,8 @@ import { generatePublishPlan, sortPlanForPreview } from "./schedule";
 import type { PublishPlanItem } from "../shared/types";
 
 const importSchema = z.object({
-  folderPath: z.string().min(1)
+  folderPath: z.string().min(1),
+  chapterFileNamePattern: z.string().optional()
 });
 
 const planSchema = z.object({
@@ -23,7 +24,9 @@ export interface GeneratePlanResponse {
 
 export async function handleImportBook(input: unknown): Promise<ImportedBook> {
   const parsed = importSchema.parse(input);
-  return importBookFolder(parsed.folderPath);
+  return importBookFolder(parsed.folderPath, {
+    chapterFileNamePattern: parsed.chapterFileNamePattern
+  });
 }
 
 export async function handleGeneratePlan(input: unknown): Promise<GeneratePlanResponse> {

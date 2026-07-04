@@ -2,8 +2,10 @@ import type { ImportBookResponse } from "../api";
 
 interface ImportPanelProps {
   folderPath: string;
+  chapterFileNamePattern: string;
   importedBook: ImportBookResponse | null;
   onFolderPathChange: (value: string) => void;
+  onChapterFileNamePatternChange: (value: string) => void;
   onImport: () => void;
   error: string | null;
 }
@@ -20,6 +22,17 @@ export function ImportPanel(props: ImportPanelProps) {
         />
         <button onClick={props.onImport}>导入</button>
       </div>
+      <label className="pattern-field">
+        章节命名格式
+        <input
+          value={props.chapterFileNamePattern}
+          onChange={(event) => props.onChapterFileNamePatternChange(event.target.value)}
+          placeholder="留空则智能识别，例如：第{章节}章_{章节名}.md"
+        />
+      </label>
+      <p className="helper-text">
+        可用占位符：{"{章节}"}、{"{章节名}"}。示例：第{"{章节}"}章_{"{章节名}"}.md、{"{章节}"}-{"{章节名}"}.md
+      </p>
       {props.error ? <p className="error-text">{props.error}</p> : null}
       {props.importedBook ? (
         <dl className="summary-grid">
