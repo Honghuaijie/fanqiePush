@@ -1058,6 +1058,7 @@ export const publishController = createPublishController({
         await waitForVisibleText("确认发布", 90000);
         log?.(`正在开启定时发布并填写 ${plannedDate} ${plannedTime}。`);
         await applyPublishSettings(plannedDate, plannedTime);
+        await activePage.waitForTimeout(1000);
         log?.("正在点击确认发布。");
         await clickVisibleButton("确认发布", { timeout: 15000 });
         log?.("正在确认番茄返回的发布结果。");
