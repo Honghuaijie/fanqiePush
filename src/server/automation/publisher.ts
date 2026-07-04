@@ -686,23 +686,12 @@ export const publishController = createPublishController({
     async function applyPublishSettings(plannedDate: string, plannedTime: string) {
       await enableScheduledPublishIfNeeded();
 
-      await activePage.evaluate((args: any) => {
-        const [dateValue, timeValue] = args as [string, string];
+      await activePage.evaluate(() => {
         const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
         const visible = (element: Element) => {
           const style = window.getComputedStyle(element);
           const rect = element.getBoundingClientRect();
           return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
-        };
-        const setNativeValue = (element: HTMLInputElement | HTMLTextAreaElement, value: string) => {
-          const prototype = Object.getPrototypeOf(element);
-          const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
-          descriptor?.set?.call(element, value);
-          element.dispatchEvent(new Event("input", { bubbles: true }));
-          element.dispatchEvent(new Event("change", { bubbles: true }));
-          element.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
-          element.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: "Enter" }));
-          element.blur();
         };
 
         const dialog = Array.from(document.querySelectorAll("[role='dialog'], .arco-modal, .semi-modal, body > div"))
@@ -717,27 +706,48 @@ export const publishController = createPublishController({
         if (noAi instanceof HTMLElement) {
           noAi.click();
         }
+      });
 
-        const inputs = Array.from(dialog.querySelectorAll("input"))
-          .filter((element) => visible(element)) as HTMLInputElement[];
+      const pickerInputs = activePage.locator(".arco-modal input.arco-picker-start-time, [role='dialog'] input.arco-picker-start-time");
+      await pickerInputs.first().waitFor({ timeout: 15000 });
+      await pickerInputs.nth(0).click({ clickCount: 3 });
+      await activePage.keyboard.press("Control+A");
+      await activePage.keyboard.type(plannedDate);
+      await activePage.keyboard.press("Enter");
 
-        const dateInput = inputs.find((input) => /^\d{4}[-/]\d{2}[-/]\d{2}$/.test(input.value))
-          ?? inputs.find((input) => normalize(input.getAttribute("placeholder")).includes("日期"))
-          ?? inputs[0];
-        const timeInput = inputs.find((input) => /^\d{2}:\d{2}$/.test(input.value))
-          ?? inputs.find((input) => normalize(input.getAttribute("placeholder")).includes("时间"))
-          ?? inputs.find((input) => input !== dateInput);
+      await pickerInputs.nth(1).click({ clickCount: 3 });
+      await activePage.keyboard.press("Control+A");
+      await activePage.keyboard.type(plannedTime);
+      await activePage.keyboard.press("Enter");
 
-        if (!(dateInput instanceof HTMLInputElement)) {
-          throw new Error("发布设置里没有找到日期输入框。");
-        }
-        if (!(timeInput instanceof HTMLInputElement)) {
-          throw new Error("发布设置里没有找到时间输入框。");
-        }
+      await activePage.waitForFunction((args: any) => {
+        const [dateValue, timeValue] = args as [string, string];
+        const normalizeDate = (value: string) => value.replace(/\//g, "-").trim();
+        const visible = (element: Element) => {
+          const style = window.getComputedStyle(element);
+          const rect = element.getBoundingClientRect();
+          return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+        };
+        const inputs = Array.from(document.querySelectorAll(".arco-modal input.arco-picker-start-time, [role='dialog'] input.arco-picker-start-time"))
+          .filter(visible) as HTMLInputElement[];
+        return normalizeDate(inputs[0]?.value ?? "") === dateValue && (inputs[1]?.value ?? "").trim() === timeValue;
+      }, [plannedDate, plannedTime], { timeout: 5000 }).catch(async () => {
+        const current = await activePage.evaluate(() => {
+          const visible = (element: Element) => {
+            const style = window.getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+            return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+          };
+          const inputs = Array.from(document.querySelectorAll(".arco-modal input.arco-picker-start-time, [role='dialog'] input.arco-picker-start-time"))
+            .filter(visible) as HTMLInputElement[];
+          return {
+            date: inputs[0]?.value ?? "",
+            time: inputs[1]?.value ?? ""
+          };
+        });
+        throw new Error(`定时发布时间填写失败：计划为 ${plannedDate} ${plannedTime}，页面实际为 ${current.date || "空"} ${current.time || "空"}。`);
+      });
 
-        setNativeValue(dateInput, dateValue);
-        setNativeValue(timeInput, timeValue);
-      }, [plannedDate, plannedTime]);
     }
 
     async function waitForPublishSubmissionResult() {
