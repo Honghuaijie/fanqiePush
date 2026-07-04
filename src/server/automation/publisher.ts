@@ -712,19 +712,23 @@ export const publishController = createPublishController({
           .map((element) => normalize(element.textContent))
           .filter(Boolean)
           .join(" ");
-        const knownFailureText = [
+        const combinedText = `${toastText} ${bodyText}`;
+        const failureMessages = [
+          "更新作品数超出每日上限",
           "超出每日上限",
           "发布失败",
           "提交失败",
           "不能发布",
           "无法发布",
+          "请选择定时发布时间",
           "请选择",
           "不能为空"
-        ].find((text) => bodyText.includes(text) || toastText.includes(text));
+        ];
+        const knownFailureText = failureMessages.find((text) => combinedText.includes(text));
         if (knownFailureText) {
           return {
             status: "failed",
-            message: toastText || bodyText.match(/[^。！？\n]*(超出每日上限|发布失败|提交失败|不能发布|无法发布|请选择|不能为空)[^。！？\n]*/)?.[0] || knownFailureText
+            message: knownFailureText === "超出每日上限" ? "更新作品数超出每日上限" : knownFailureText
           };
         }
         if (bodyText.includes("发布成功") || bodyText.includes("提交成功") || bodyText.includes("定时发布成功")) {
