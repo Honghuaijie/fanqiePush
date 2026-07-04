@@ -719,19 +719,72 @@ export const publishController = createPublishController({
       await pickerInputs.first().waitFor({ timeout: 15000 });
 
       async function pickDateValue(dateText: string) {
-        const [, monthText, dayText] = dateText.split("-");
+        const [yearText, monthText, dayText] = dateText.split("-");
+        const targetMonthIndex = Number(yearText) * 12 + Number(monthText);
         const dayNumber = String(Number(dayText));
         await pickerInputs.nth(0).scrollIntoViewIfNeeded();
         await pickerInputs.nth(0).click();
         await activePage.waitForTimeout(300);
+
+        for (let attempt = 0; attempt < 24; attempt += 1) {
+          const monthDelta = await activePage.evaluate((args: any) => {
+            const [targetIndex] = args as [number];
+            const visible = (element: Element) => {
+              const style = window.getComputedStyle(element);
+              const rect = element.getBoundingClientRect();
+              return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+            };
+            const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
+            const monthText = Array.from(document.querySelectorAll("[class*='picker'], [role='dialog'], div, span"))
+              .filter(visible)
+              .map((element) => normalize(element.textContent))
+              .find((text) => /^\d{4}年\d{1,2}月$/.test(text));
+            const match = monthText?.match(/^(\d{4})年(\d{1,2})月$/);
+            if (!match) return 0;
+            const currentIndex = Number(match[1]) * 12 + Number(match[2]);
+            return targetIndex - currentIndex;
+          }, [targetMonthIndex]);
+
+          if (monthDelta === 0) break;
+
+          const clickedNav = await activePage.evaluate((direction: string) => {
+            const visible = (element: Element) => {
+              const style = window.getComputedStyle(element);
+              const rect = element.getBoundingClientRect();
+              return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+            };
+            const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
+            const targetText = direction === "prev" ? "‹" : "›";
+            const target = Array.from(document.querySelectorAll("button, [role='button'], span, div"))
+              .filter(visible)
+              .filter((element) => normalize(element.textContent) === targetText)
+              .sort((left, right) => left.getBoundingClientRect().top - right.getBoundingClientRect().top)[0];
+            if (target instanceof HTMLElement) {
+              target.click();
+              return true;
+            }
+            return false;
+          }, monthDelta < 0 ? "prev" : "next");
+
+          if (!clickedNav) break;
+          await activePage.waitForTimeout(200);
+        }
+
         const clicked = await activePage.evaluate((args: any) => {
-          const [targetDate, targetMonthText, targetDayText] = args as [string, string, string];
+          const [targetDate, targetYearText, targetMonthText, targetDayText] = args as [string, string, string, string];
           const visible = (element: Element) => {
             const style = window.getComputedStyle(element);
             const rect = element.getBoundingClientRect();
             return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
           };
           const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
+          const visibleMonth = Array.from(document.querySelectorAll("[class*='picker'], [role='dialog'], div, span"))
+            .filter(visible)
+            .map((element) => normalize(element.textContent))
+            .find((text) => /^\d{4}年\d{1,2}月$/.test(text));
+          if (visibleMonth !== `${targetYearText}年${Number(targetMonthText)}月`) {
+            return false;
+          }
           const candidates = Array.from(document.querySelectorAll("[class*='picker'], [role='gridcell'], td, div, span"))
             .filter(visible)
             .filter((element) => {
@@ -753,7 +806,7 @@ export const publishController = createPublishController({
             return true;
           }
           return false;
-        }, [dateText, monthText, dayNumber]);
+        }, [dateText, yearText, monthText, dayNumber]);
         if (!clicked) {
           await pickerInputs.nth(0).fill(dateText);
           await activePage.keyboard.press("Tab");
