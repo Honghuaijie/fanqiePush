@@ -125,8 +125,22 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
       return state;
     }
 
-    await session.openChapterManager(currentBookName);
-    await session.openNewChapterEditor();
+    try {
+      await session.openChapterManager(currentBookName);
+      await session.openNewChapterEditor();
+    } catch (error) {
+      const nextSnapshot = await session.inspect();
+      if (isLoginSnapshot(nextSnapshot)) {
+        state = {
+          status: "waiting-login",
+          currentChapter: state.currentChapter ?? currentItems[0]?.chapterNumber,
+          message: "请在弹出的 Chrome 窗口中完成番茄登录，登录成功后点击继续。"
+        };
+        return state;
+      }
+      throw error;
+    }
+
     state = {
       status: "paused",
       currentChapter: state.currentChapter ?? currentItems[0]?.chapterNumber,
