@@ -634,7 +634,7 @@ describe("publisher controller", () => {
       plannedDate: "2026-07-01",
       plannedTime: "09:30"
     }]);
-    expect(state.message).toBe("第1章已定时发布：2026-07-01 09:30。");
+    expect(state.message).toBe("全部 1 章已定时发布完成。");
 
     const log = JSON.parse(await readFile(path.join(bookDir, ".fanqie-publish.json"), "utf8"));
     expect(log.chapters).toMatchObject([{
@@ -645,6 +645,72 @@ describe("publisher controller", () => {
       plannedTime: "09:30",
       status: "scheduled"
     }]);
+  });
+
+  it("schedules all remaining planned chapters in one run", async () => {
+    tempDir = await mkdtemp(path.join(os.tmpdir(), "fanqie-schedule-all-"));
+    const bookDir = path.join(tempDir, "测试书");
+    await mkdir(bookDir);
+    await writeFile(path.join(bookDir, "第001章 开局.md"), "# 第001章 开局\n\n这是第一章正文。".repeat(120), "utf8");
+    await writeFile(path.join(bookDir, "第002章 夜雨.md"), "# 第002章 夜雨\n\n这是第二章正文。".repeat(120), "utf8");
+
+    const planItems: PublishPlanItem[] = [
+      { ...planItem, characterCount: 1500 },
+      {
+        chapterNumber: 2,
+        title: "第002章 夜雨",
+        fileName: "第002章 夜雨.md",
+        characterCount: 1500,
+        plannedDate: "2026-07-01",
+        plannedTime: "12:00",
+        status: "pending"
+      }
+    ];
+    const scheduled: Array<{ chapterNumber: number; plannedDate: string; plannedTime: string }> = [];
+    const openedEditors: string[] = [];
+    const controller = createPublishController({
+      openBrowser: async () => ({
+        goto: async () => undefined,
+        inspect: async () => ({
+          url: "https://fanqienovel.com/main/writer/publish",
+          title: "章节编辑",
+          visibleText: [],
+          buttons: ["存草稿", "下一步"],
+          links: []
+        }),
+        openChapterManager: async () => undefined,
+        openNewChapterEditor: async () => {
+          openedEditors.push("opened");
+        },
+        saveDraftChapter: async () => undefined,
+        scheduleChapter: async (chapter, plannedDate, plannedTime) => {
+          scheduled.push({ chapterNumber: chapter.chapterNumber, plannedDate, plannedTime });
+        },
+        close: async () => undefined
+      })
+    });
+
+    await controller.start({
+      bookName: "测试书",
+      folderPath: bookDir,
+      items: planItems
+    });
+
+    const state = await controller.scheduleCurrentChapter();
+
+    expect(scheduled).toEqual([
+      { chapterNumber: 1, plannedDate: "2026-07-01", plannedTime: "09:30" },
+      { chapterNumber: 2, plannedDate: "2026-07-01", plannedTime: "12:00" }
+    ]);
+    expect(openedEditors).toEqual(["opened", "opened"]);
+    expect(state.status).toBe("stopped");
+    expect(state.message).toBe("全部 2 章已定时发布完成。");
+
+    const log = JSON.parse(await readFile(path.join(bookDir, ".fanqie-publish.json"), "utf8"));
+    expect(log.chapters).toMatchObject([
+      { chapterNumber: 1, status: "scheduled" },
+      { chapterNumber: 2, status: "scheduled" }
+    ]);
   });
 
   it("does not mark a chapter scheduled when publish submission fails", async () => {

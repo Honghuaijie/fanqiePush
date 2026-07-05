@@ -381,40 +381,71 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
       if (!folderPath) {
         throw new Error("当前发布任务缺少本地小说信息，请重新导入后开始发布。");
       }
-      const { chapter, currentPlanItem, imported } = await getCurrentChapterContext();
-      if (chapter.characterCount < 1000) {
-        throw new Error(`第${chapter.chapterNumber}章正文不足 1000 字，无法进入番茄定时发布流程。`);
+      const currentChapterNumber = state.currentChapter ?? currentItems[0]?.chapterNumber;
+      const startIndex = currentItems.findIndex((item) => item.chapterNumber === currentChapterNumber);
+      if (startIndex < 0) {
+        throw new Error("没有找到当前要处理的章节，请先生成发布计划。");
       }
 
-      appendLog(`正在提交第${chapter.chapterNumber}章定时发布。`);
-      try {
-        await session.scheduleChapter({
+      let imported = await importBookFolder(folderPath);
+      let publishLog = imported.publishLog;
+      let completedCount = 0;
+      const remainingItems = currentItems.slice(startIndex);
+
+      for (let index = 0; index < remainingItems.length; index += 1) {
+        const currentPlanItem = remainingItems[index];
+        const chapter = imported.chapters.find((item) => item.fileName === currentPlanItem.fileName);
+        if (!chapter) {
+          throw new Error(`没有在本地文件夹中找到 ${currentPlanItem.fileName}。`);
+        }
+        if (chapter.characterCount < 1000) {
+          throw new Error(`第${chapter.chapterNumber}章正文不足 1000 字，无法进入番茄定时发布流程。`);
+        }
+
+        state = { ...state, status: "running", currentChapter: chapter.chapterNumber, logs: [...logs] };
+        appendLog(`正在提交第${chapter.chapterNumber}章定时发布。`);
+        try {
+          await session.scheduleChapter({
+            chapterNumber: chapter.chapterNumber,
+            title: chapter.title,
+            body: chapter.body
+          }, currentPlanItem.plannedDate, currentPlanItem.plannedTime, appendLog);
+        } catch (error) {
+          appendLog(error instanceof Error ? error.message : "定时发布失败。", "error");
+          throw error;
+        }
+
+        publishLog = updateChapterStatus(publishLog, {
           chapterNumber: chapter.chapterNumber,
           title: chapter.title,
-          body: chapter.body
-        }, currentPlanItem.plannedDate, currentPlanItem.plannedTime, appendLog);
-      } catch (error) {
-        appendLog(error instanceof Error ? error.message : "定时发布失败。", "error");
-        throw error;
+          fileName: chapter.fileName,
+          characterCount: chapter.characterCount,
+          plannedDate: currentPlanItem.plannedDate,
+          plannedTime: currentPlanItem.plannedTime,
+          submittedAt: new Date().toISOString(),
+          status: "scheduled"
+        });
+        await writePublishLog(folderPath, publishLog);
+        completedCount += 1;
+        appendLog(`第${chapter.chapterNumber}章已定时发布：${currentPlanItem.plannedDate} ${currentPlanItem.plannedTime}。`, "success");
+
+        const nextPlanItem = remainingItems[index + 1];
+        if (nextPlanItem) {
+          state = { ...state, status: "running", currentChapter: nextPlanItem.chapterNumber, logs: [...logs] };
+          appendLog(`准备继续发布第${nextPlanItem.chapterNumber}章。`);
+          const openedState = await openCurrentChapterEditor();
+          if (openedState.status === "waiting-login") {
+            return openedState;
+          }
+          imported = await importBookFolder(folderPath);
+        }
       }
 
-      const nextLog = updateChapterStatus(imported.publishLog, {
-        chapterNumber: chapter.chapterNumber,
-        title: chapter.title,
-        fileName: chapter.fileName,
-        characterCount: chapter.characterCount,
-        plannedDate: currentPlanItem.plannedDate,
-        plannedTime: currentPlanItem.plannedTime,
-        submittedAt: new Date().toISOString(),
-        status: "scheduled"
-      });
-      await writePublishLog(folderPath, nextLog);
-
-      appendLog(`第${chapter.chapterNumber}章已定时发布：${currentPlanItem.plannedDate} ${currentPlanItem.plannedTime}。`, "success");
+      appendLog(`全部 ${completedCount} 章已定时发布完成。`, "success");
       return withLogs({
-        ...state,
-        currentChapter: chapter.chapterNumber,
-        message: `第${chapter.chapterNumber}章已定时发布：${currentPlanItem.plannedDate} ${currentPlanItem.plannedTime}。`
+        status: "stopped",
+        currentChapter: remainingItems.at(-1)?.chapterNumber,
+        message: `全部 ${completedCount} 章已定时发布完成。`
       });
     },
 
