@@ -612,6 +612,7 @@ export const publishController = createPublishController({
           hasSaved: bodyText.includes("已保存"),
           hasNext: buttonTexts.some((text) => text === "下一步"),
           hasSubmit: buttonTexts.some((text) => text === "提交"),
+          hasBasicCheck: buttonTexts.some((text) => text.includes("仅基础检测")),
           hasFullCheck: buttonTexts.some((text) => text.includes("全面检测")),
           hasAnyCheck: buttonTexts.some((text) => text.includes("检测")),
           hasPublishSettings: bodyText.includes("发布设置") && bodyText.includes("确认发布"),
@@ -645,7 +646,8 @@ export const publishController = createPublishController({
               .map((element) => normalize(element.textContent));
             const bodyText = normalize(document.body.innerText);
             return buttonTexts.some((text) => text === "提交" || text.includes("检测") || text.includes("确认发布"))
-              || bodyText.includes("发布设置");
+              || bodyText.includes("发布设置")
+              || bodyText.includes("请选择内容检测方式");
           }, null, { timeout: 6000 });
           return;
         } catch {
@@ -670,6 +672,11 @@ export const publishController = createPublishController({
         if (state.hasSubmit) {
           await clickIfVisible("提交");
           await activePage.waitForTimeout(800);
+          continue;
+        }
+        if (state.hasBasicCheck) {
+          await clickVisibleButton("仅基础检测", { exact: false, timeout: 10000 });
+          await activePage.waitForTimeout(1200);
           continue;
         }
         if (state.hasFullCheck) {
