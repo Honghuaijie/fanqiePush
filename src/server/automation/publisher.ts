@@ -631,61 +631,70 @@ export const publishController = createPublishController({
     }
 
     async function clickNextAndWaitForDetection() {
-      for (let attempt = 1; attempt <= 3; attempt += 1) {
-        await clickVisibleButton("下一步");
-        try {
-          await activePage.waitForFunction(() => {
-            const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
-            const visible = (element: Element) => {
-              const style = window.getComputedStyle(element);
-              const rect = element.getBoundingClientRect();
-              return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
-            };
-            const buttonTexts = Array.from(document.querySelectorAll("button, [role='button']"))
-              .filter(visible)
-              .map((element) => normalize(element.textContent));
-            const bodyText = normalize(document.body.innerText);
-            return buttonTexts.some((text) => text === "提交" || text.includes("检测") || text.includes("确认发布"))
-              || bodyText.includes("发布设置")
-              || bodyText.includes("请选择内容检测方式");
-          }, null, { timeout: 6000 });
+      await clickVisibleButton("下一步");
+      try {
+        await activePage.waitForFunction(() => {
+          const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
+          const visible = (element: Element) => {
+            const style = window.getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+            return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+          };
+          const buttonTexts = Array.from(document.querySelectorAll("button, [role='button']"))
+            .filter(visible)
+            .map((element) => normalize(element.textContent));
+          const bodyText = normalize(document.body.innerText);
+          return buttonTexts.some((text) => text === "提交" || text.includes("检测") || text.includes("确认发布"))
+            || bodyText.includes("发布设置")
+            || bodyText.includes("请选择内容检测方式");
+        }, null, { timeout: 15000 });
+      } catch {
+        const state = await getPublishPageState();
+        if (!state.hasNext || state.hasSubmit || state.hasFullCheck || state.hasAnyCheck || state.hasPublishSettings) {
           return;
-        } catch {
-          const state = await getPublishPageState();
-          if (!state.hasNext || state.hasSubmit || state.hasFullCheck || state.hasAnyCheck || state.hasPublishSettings) {
-            return;
-          }
-          if (attempt === 3) {
-            throw new Error(`已填写章节内容，但点击“下一步”后页面仍停在编辑器。请确认页面是否已保存、标题是否完整、或番茄页面是否有必填项提示。当前按钮：${state.buttons.join("、") || "无"}`);
-          }
         }
+        throw new Error(`已填写章节内容，但点击“下一步”后页面仍停在编辑器。请确认页面是否已保存、标题是否完整、或番茄页面是否有必填项提示。当前按钮：${state.buttons.join("、") || "无"}`);
       }
     }
 
     async function openPublishSettingsFromDetection() {
       await activePage.waitForTimeout(800);
-      await clickIfVisible("提交");
+      let submitClicked = await clickIfVisible("提交");
+      let basicCheckClicked = false;
+      let fullCheckClicked = false;
+      let genericCheckClicked = false;
 
-      for (let attempt = 1; attempt <= 3; attempt += 1) {
+      for (let attempt = 1; attempt <= 8; attempt += 1) {
         const state = await getPublishPageState();
         if (state.hasPublishSettings) return;
         if (state.hasSubmit) {
-          await clickIfVisible("提交");
+          if (!submitClicked) {
+            submitClicked = await clickIfVisible("提交");
+          }
           await activePage.waitForTimeout(800);
           continue;
         }
         if (state.hasBasicCheck) {
-          await clickVisibleButton("仅基础检测", { exact: false, timeout: 10000 });
+          if (!basicCheckClicked) {
+            await clickVisibleButton("仅基础检测", { exact: false, timeout: 10000 });
+            basicCheckClicked = true;
+          }
           await activePage.waitForTimeout(1200);
           continue;
         }
         if (state.hasFullCheck) {
-          await clickVisibleButton("全面检测", { exact: false, timeout: 10000 });
+          if (!fullCheckClicked) {
+            await clickVisibleButton("全面检测", { exact: false, timeout: 10000 });
+            fullCheckClicked = true;
+          }
           await activePage.waitForTimeout(1200);
           continue;
         }
         if (state.hasAnyCheck) {
-          await clickVisibleButton("检测", { exact: false, timeout: 10000 });
+          if (!genericCheckClicked) {
+            await clickVisibleButton("检测", { exact: false, timeout: 10000 });
+            genericCheckClicked = true;
+          }
           await activePage.waitForTimeout(1200);
           continue;
         }
