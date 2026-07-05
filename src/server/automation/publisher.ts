@@ -13,6 +13,7 @@ declare const window: any;
 declare const document: {
   body: any;
   title: string;
+  activeElement?: any;
   createElement(tagName: string): any;
   querySelectorAll(selector: string): any[];
 };
@@ -55,6 +56,18 @@ export interface BrowserPageSnapshot {
   }>;
 }
 
+export interface PublishDatePickerDebugSnapshot {
+  url: string;
+  inputs: Array<{ value: string; placeholder: string; className: string }>;
+  calendarTitles: string[];
+  pickerButtons: string[];
+  activeElement?: {
+    tag: string;
+    className: string;
+    value?: string;
+  };
+}
+
 export interface StartPublishInput {
   bookName: string;
   folderPath: string;
@@ -74,6 +87,7 @@ export interface BrowserSession {
   openNewChapterEditor(): Promise<void>;
   saveDraftChapter(chapter: DraftChapterInput, log?: (message: string, level?: PublishLogLevel) => void): Promise<void>;
   scheduleChapter?(chapter: DraftChapterInput, plannedDate: string, plannedTime: string, log?: (message: string, level?: PublishLogLevel) => void): Promise<void>;
+  debugDatePicker?(targetDate?: string): Promise<PublishDatePickerDebugSnapshot>;
   close(): Promise<void>;
 }
 
@@ -91,6 +105,7 @@ export interface PublishController {
   saveDraftChapter(chapter: DraftChapterInput): Promise<PublishRunState>;
   saveCurrentDraft(): Promise<PublishRunState>;
   scheduleCurrentChapter(): Promise<PublishRunState>;
+  debugDatePicker(targetDate?: string): Promise<PublishDatePickerDebugSnapshot>;
   stop(): Promise<PublishRunState>;
 }
 
@@ -244,6 +259,14 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
       }
 
       return session.inspect();
+    },
+
+    async debugDatePicker(targetDate) {
+      if (!session?.debugDatePicker) {
+        throw new Error("独立浏览器尚未启动，或当前浏览器不支持日期诊断。");
+      }
+
+      return session.debugDatePicker(targetDate);
     },
 
     async openChapterManager() {
@@ -718,7 +741,7 @@ export const publishController = createPublishController({
       const pickerInputs = activePage.locator(".arco-modal input.arco-picker-start-time, [role='dialog'] input.arco-picker-start-time");
       await pickerInputs.first().waitFor({ timeout: 15000 });
 
-      async function clickPickerConfirmButton() {
+      async function clickVisiblePopupConfirmButton() {
         return activePage.evaluate(() => {
           const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
           const visible = (element: Element) => {
@@ -756,109 +779,121 @@ export const publishController = createPublishController({
         const [yearText, monthText, dayText] = dateText.split("-");
         const targetMonthIndex = Number(yearText) * 12 + Number(monthText);
         const dayNumber = String(Number(dayText));
+
         await pickerInputs.nth(0).scrollIntoViewIfNeeded();
-        await pickerInputs.nth(0).click();
-        await activePage.waitForTimeout(300);
+        for (let retry = 1; retry <= 3; retry += 1) {
+          await pickerInputs.nth(0).click();
+          await activePage.waitForTimeout(300);
 
-        for (let attempt = 0; attempt < 24; attempt += 1) {
-          const monthDelta = await activePage.evaluate((args: any) => {
+          const navigateResult = await activePage.evaluate((args: any) => {
             const [targetIndex] = args as [number];
-            const visible = (element: Element) => {
-              const style = window.getComputedStyle(element);
-              const rect = element.getBoundingClientRect();
-              return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
-            };
-            const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
-            const monthText = Array.from(document.querySelectorAll("[class*='picker'], [role='dialog'], div, span"))
-              .filter(visible)
-              .map((element) => normalize(element.textContent))
-              .find((text) => /^\d{4}年\d{1,2}月$/.test(text));
-            const match = monthText?.match(/^(\d{4})年(\d{1,2})月$/);
-            if (!match) return 0;
-            const currentIndex = Number(match[1]) * 12 + Number(match[2]);
-            return targetIndex - currentIndex;
-          }, [targetMonthIndex]);
-
-          if (monthDelta === 0) break;
-
-          const clickedNav = await activePage.evaluate((direction: string) => {
-            const visible = (element: Element) => {
-              const style = window.getComputedStyle(element);
-              const rect = element.getBoundingClientRect();
-              return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
-            };
-            const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
-            const targetText = direction === "prev" ? "‹" : "›";
-            const target = Array.from(document.querySelectorAll("button, [role='button'], span, div"))
-              .filter(visible)
-              .filter((element) => normalize(element.textContent) === targetText)
-              .sort((left, right) => left.getBoundingClientRect().top - right.getBoundingClientRect().top)[0];
-            if (target instanceof HTMLElement) {
-              target.click();
-              return true;
-            }
-            return false;
-          }, monthDelta < 0 ? "prev" : "next");
-
-          if (!clickedNav) break;
-          await activePage.waitForTimeout(200);
-        }
-
-        const clicked = await activePage.evaluate((args: any) => {
-          const [targetDate, targetYearText, targetMonthText, targetDayText] = args as [string, string, string, string];
           const visible = (element: Element) => {
             const style = window.getComputedStyle(element);
             const rect = element.getBoundingClientRect();
             return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
           };
           const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
-          const visibleMonth = Array.from(document.querySelectorAll("[class*='picker'], [role='dialog'], div, span"))
-            .filter(visible)
-            .map((element) => normalize(element.textContent))
-            .find((text) => /^\d{4}年\d{1,2}月$/.test(text));
-          if (visibleMonth !== `${targetYearText}年${Number(targetMonthText)}月`) {
+            const findCalendarTitle = () => Array.from(document.querySelectorAll("[class*='picker'], [role='dialog'], div, span"))
+              .filter(visible)
+              .map((element) => normalize(element.textContent))
+              .find((text) => /^\d{4}年\d{1,2}月$/.test(text));
+            const clickNav = (direction: "prev" | "next") => {
+              const targetText = direction === "prev" ? "‹" : "›";
+              const target = Array.from(document.querySelectorAll("button, [role='button'], span, div"))
+                .filter(visible)
+                .filter((element) => normalize(element.textContent) === targetText)
+                .sort((left, right) => left.getBoundingClientRect().top - right.getBoundingClientRect().top)[0];
+              if (target instanceof HTMLElement) {
+                target.click();
+                return true;
+              }
+              return false;
+            };
+
+            for (let attempt = 0; attempt < 24; attempt += 1) {
+              const monthText = findCalendarTitle();
+              const match = monthText?.match(/^(\d{4})年(\d{1,2})月$/);
+              if (!match) return { ok: false, monthText: monthText ?? "" };
+              const currentIndex = Number(match[1]) * 12 + Number(match[2]);
+              const delta = targetIndex - currentIndex;
+              if (delta === 0) return { ok: true, monthText };
+              if (!clickNav(delta < 0 ? "prev" : "next")) return { ok: false, monthText };
+            }
+
+            return { ok: false, monthText: findCalendarTitle() ?? "" };
+          }, [targetMonthIndex]);
+
+          if (!navigateResult.ok) {
+            throw new Error(`没有把日期面板切到目标年月：计划 ${yearText}-${monthText}，面板当前 ${navigateResult.monthText || "未知"}。`);
+          }
+
+          const clicked = await activePage.evaluate((args: any) => {
+            const [targetDate, targetYearText, targetMonthText, targetDayText] = args as [string, string, string, string];
+            const visible = (element: Element) => {
+              const style = window.getComputedStyle(element);
+              const rect = element.getBoundingClientRect();
+              return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+            };
+            const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
+            const visibleMonth = Array.from(document.querySelectorAll("[class*='picker'], [role='dialog'], div, span"))
+              .filter(visible)
+              .map((element) => normalize(element.textContent))
+              .find((text) => /^\d{4}年\d{1,2}月$/.test(text));
+            if (visibleMonth !== `${targetYearText}年${Number(targetMonthText)}月`) {
+              return false;
+            }
+            const candidates = Array.from(document.querySelectorAll("[class*='picker'], [role='gridcell'], td, div, span"))
+              .filter(visible)
+              .filter((element) => {
+                const text = normalize(element.textContent);
+                const aria = normalize(element.getAttribute("aria-label") || element.getAttribute("title"));
+                const className = typeof element.className === "string" ? element.className : "";
+                return (text === targetDayText || aria.includes(targetDate) || aria.includes(`${targetMonthText}-${targetDayText}`))
+                  && !className.includes("disabled")
+                  && !className.includes("not-in-view");
+              })
+              .sort((left, right) => {
+                const leftRect = left.getBoundingClientRect();
+                const rightRect = right.getBoundingClientRect();
+                return (leftRect.width * leftRect.height) - (rightRect.width * rightRect.height);
+              });
+            const target = candidates.find((element) => element instanceof HTMLElement);
+            if (target instanceof HTMLElement) {
+              target.click();
+              return true;
+            }
             return false;
+          }, [dateText, yearText, monthText, dayNumber]);
+
+          if (!clicked) {
+            throw new Error(`日期面板已经切到 ${yearText}年${Number(monthText)}月，但没有找到 ${dayNumber} 日。`);
           }
-          const candidates = Array.from(document.querySelectorAll("[class*='picker'], [role='gridcell'], td, div, span"))
-            .filter(visible)
-            .filter((element) => {
-              const text = normalize(element.textContent);
-              const aria = normalize(element.getAttribute("aria-label") || element.getAttribute("title"));
-              const className = typeof element.className === "string" ? element.className : "";
-              return (text === targetDayText || aria.includes(targetDate) || aria.includes(`${targetMonthText}-${targetDayText}`))
-                && !className.includes("disabled")
-                && !className.includes("not-in-view");
-            })
-            .sort((left, right) => {
-              const leftRect = left.getBoundingClientRect();
-              const rightRect = right.getBoundingClientRect();
-              return (rightRect.width * rightRect.height) - (leftRect.width * leftRect.height);
-            });
-          const target = candidates.find((element) => element instanceof HTMLElement);
-          if (target instanceof HTMLElement) {
-            target.click();
-            return true;
-          }
-          return false;
-        }, [dateText, yearText, monthText, dayNumber]);
-        if (!clicked) {
-          await pickerInputs.nth(0).fill(dateText);
-          await activePage.keyboard.press("Tab");
-        } else {
+
+          await activePage.waitForTimeout(500);
+          await pickerInputs.nth(0).blur();
           await activePage.waitForTimeout(300);
-          const confirmed = await clickPickerConfirmButton();
-          if (!confirmed) {
-            await activePage.keyboard.press("Tab");
+          const picked = await readPickerValues();
+          if (normalizeDateValue(picked.date) === dateText) {
+            return;
           }
+
+          if (retry === 3) {
+            throw new Error(`日期选择后没有生效：计划 ${dateText}，页面实际 ${picked.date || "空"}。`);
+          }
+
+          await activePage.waitForTimeout(300);
         }
-        await activePage.waitForTimeout(500);
       }
 
       async function fillPickerValues(dateText: string, timeText: string) {
         await pickDateValue(dateText.replace(/\//g, "-"));
+        let currentAfterDate = await readPickerValues();
+        if (normalizeDateValue(currentAfterDate.date) !== dateText.replace(/\//g, "-")) {
+          throw new Error(`日期校验失败，停止选择时间：计划 ${dateText.replace(/\//g, "-")}，页面实际 ${currentAfterDate.date || "空"}。`);
+        }
         await pickerInputs.nth(1).click();
         await pickerInputs.nth(1).fill(timeText);
-        const confirmed = await clickPickerConfirmButton();
+        const confirmed = await clickVisiblePopupConfirmButton();
         if (!confirmed) {
           await activePage.keyboard.press("Tab");
         }
@@ -1254,6 +1289,49 @@ export const publishController = createPublishController({
         await clickVisibleButton("确认发布", { timeout: 15000 });
         log?.("正在确认番茄返回的发布结果。");
         await waitForPublishSubmissionResult();
+      },
+      async debugDatePicker(targetDate) {
+        if (targetDate) {
+          const inputs = activePage.locator(".arco-modal input.arco-picker-start-time, [role='dialog'] input.arco-picker-start-time");
+          await inputs.first().waitFor({ timeout: 5000 });
+          await inputs.nth(0).click();
+          await activePage.waitForTimeout(300);
+        }
+
+        return activePage.evaluate(() => {
+          const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
+          const visible = (element: Element) => {
+            const style = window.getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+            return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+          };
+          const active = document.activeElement;
+          return {
+            url: window.location.href,
+            inputs: (Array.from(document.querySelectorAll(".arco-modal input, [role='dialog'] input")) as HTMLInputElement[])
+              .filter(visible)
+              .map((input) => ({
+                value: input.value,
+                placeholder: input.getAttribute("placeholder") ?? "",
+                className: typeof input.className === "string" ? input.className : ""
+              })),
+            calendarTitles: Array.from(document.querySelectorAll("[class*='picker'], [role='dialog'], div, span"))
+              .filter(visible)
+              .map((element) => normalize(element.textContent))
+              .filter((text) => /^\d{4}年\d{1,2}月$/.test(text)),
+            pickerButtons: Array.from(document.querySelectorAll("button, [role='button'], span, div"))
+              .filter(visible)
+              .map((element) => normalize(element.textContent))
+              .filter((text) => text === "确定" || text === "今天" || text === "‹" || text === "›" || text === "«" || text === "»"),
+            activeElement: active instanceof HTMLElement
+              ? {
+                tag: active.tagName.toLowerCase(),
+                className: typeof active.className === "string" ? active.className : "",
+                value: active instanceof HTMLInputElement ? active.value : undefined
+              }
+              : undefined
+          };
+        });
       },
       async close() {
         await context.close();

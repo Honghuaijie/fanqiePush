@@ -34,6 +34,14 @@ export function createRoutes(): Router {
     }
   });
 
+  router.get("/publish/debug-date-picker", async (req, res, next) => {
+    try {
+      res.json(await publishController.debugDatePicker(typeof req.query.date === "string" ? req.query.date : undefined));
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.post("/publish/open-chapter-manager", async (_req, res, next) => {
     try {
       res.json(await publishController.openChapterManager());
