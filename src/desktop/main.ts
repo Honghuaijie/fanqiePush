@@ -130,7 +130,7 @@ async function startDesktopApp() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 860,
-    minWidth: 960,
+    minWidth: 720,
     minHeight: 680,
     show: false,
     webPreferences: {

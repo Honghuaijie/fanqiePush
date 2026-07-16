@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { PublishPlanItem } from "../shared/types";
 import { ApiRequestError, continuePublish, generatePlan, importBook, scheduleCurrentChapter, startPublish, stopPublish, type ImportBookResponse, type PublishRunState } from "./api";
 import { FinalPreview } from "./components/FinalPreview";
@@ -7,6 +7,7 @@ import { PlanTable } from "./components/PlanTable";
 import { PublishFlowGuide } from "./components/PublishFlowGuide";
 import { PublishControls } from "./components/PublishControls";
 import { RangePanel } from "./components/RangePanel";
+import { getDesktopBridge } from "./desktop";
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -27,8 +28,17 @@ export function App() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [flowGuideOpen, setFlowGuideOpen] = useState(false);
   const [publishState, setPublishState] = useState<PublishRunState>({ status: "idle" });
+  const [recentFolders, setRecentFolders] = useState<string[]>([]);
 
   const canStart = useMemo(() => planItems.length > 0, [planItems.length]);
+
+  useEffect(() => {
+    const desktop = getDesktopBridge();
+    if (!desktop) return;
+    void desktop.getDesktopInfo()
+      .then((info) => setRecentFolders(info.recentFolders.slice(0, 10)))
+      .catch(() => undefined);
+  }, []);
 
   async function handleImport() {
     setError(null);
@@ -37,6 +47,14 @@ export function App() {
       setBook(imported);
       setStartChapter(imported.chapters[0]?.chapterNumber.toString() ?? "");
       setEndChapter(imported.chapters.at(-1)?.chapterNumber.toString() ?? "");
+      const desktop = getDesktopBridge();
+      if (desktop) {
+        await desktop.rememberRecentFolder(imported.folderPath);
+        setRecentFolders((current) => [
+          imported.folderPath,
+          ...current.filter((folder) => folder !== imported.folderPath)
+        ].slice(0, 10));
+      }
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : "导入失败");
     }
@@ -138,8 +156,10 @@ export function App() {
           folderPath={folderPath}
           chapterFileNamePattern={chapterFileNamePattern}
           importedBook={book}
+          recentFolders={recentFolders}
           onFolderPathChange={setFolderPath}
           onChapterFileNamePatternChange={setChapterFileNamePattern}
+          onRecentFolderSelect={setFolderPath}
           onImport={handleImport}
           error={error}
         />

@@ -1,4 +1,5 @@
 import type { Chapter, PublishPlanItem } from "../shared/types";
+import { getDesktopBridge } from "./desktop";
 
 export interface ImportBookResponse {
   bookName: string;
@@ -79,13 +80,22 @@ export async function scheduleCurrentChapter(): Promise<PublishRunState> {
 }
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
-  const response = await fetch(url, {
+  const desktop = getDesktopBridge();
+  const runtime = desktop ? await desktop.getRuntime() : undefined;
+  const requestUrl = runtime ? new URL(url, runtime.apiOrigin).toString() : url;
+  const response = await fetch(requestUrl, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      ...(runtime ? { "x-fanqie-token": runtime.apiToken } : {})
+    },
     body: JSON.stringify(body)
   });
 
-  const payload = await response.json();
+  const payload = await response.json() as T & {
+    error?: string;
+    state?: PublishRunState;
+  };
   if (!response.ok) {
     throw new ApiRequestError(payload.error ?? "请求失败", payload.state);
   }
