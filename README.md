@@ -2,6 +2,19 @@
 
 这是一个本地运行的番茄小说章节发布辅助工具。它用于导入已经写好的 Markdown 章节，生成定时发布计划，并通过独立 Chrome 浏览器进入番茄作者后台提交章节。
 
+## 桌面安装版
+
+桌面安装版支持 Windows 10/11（x64）和 macOS，不需要另外安装 Node.js，也不需要手动启动前后端服务。安装后直接打开“番茄章节发布工具”即可使用，但电脑仍需安装 Chrome。
+
+当前 `0.2.x` 安装包未进行商业代码签名，只适合第一阶段自用：
+
+- Windows 首次运行如果出现 Microsoft Defender SmartScreen，请确认安装包来自本项目发布页，然后点击“更多信息”与“仍要运行”。
+- macOS 首次运行如果提示无法验证开发者，请在“系统设置 → 隐私与安全性”中找到拦截提示并选择“仍要打开”。
+- 覆盖安装新版本不会删除本地设置、Chrome 登录资料、运行日志或小说发布记录。
+- 正式对外销售前必须配置 Windows 代码签名和 Apple Developer ID 签名、公证，不能继续分发未签名安装包。
+
+应用内“设置与数据”页面会显示所有数据保存地址，并提供卸载入口。卸载前会列出待清理的完整路径；应用数据始终清理，小说文件夹中的 `.fanqie-publish.json` 默认删除，也可以取消勾选后保留。
+
 ## 运行环境
 
 - Node.js 20 或更高版本
@@ -172,6 +185,19 @@ npm run typecheck
 
 ```bash
 npm run build
+```
+
+生成当前平台的安装包：
+
+```bash
+PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm run dist:mac
+```
+
+Windows PowerShell：
+
+```powershell
+$env:PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD="1"
+npm run dist:win
 ```
 
 ## 注意事项

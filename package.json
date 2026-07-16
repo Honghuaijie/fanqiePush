@@ -1,7 +1,10 @@
 {
   "name": "fanqie-publish-tool",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
+  "description": "导入 Markdown 小说章节并在番茄作者后台创建定时发布计划的本地桌面工具。",
+  "author": "Honghuaijie",
+  "repository": "https://github.com/Honghuaijie/fanqiePush.git",
   "type": "module",
   "main": "dist-electron/main.cjs",
   "scripts": {
@@ -13,7 +16,9 @@
     "build:web": "vite build",
     "build:desktop": "tsup",
     "build": "npm run build:web && npm run build:desktop",
-    "dev:desktop": "npm run build:desktop && concurrently -k \"vite --host 127.0.0.1\" \"cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 wait-on tcp:5173 && electron .\""
+    "dev:desktop": "npm run build:desktop && concurrently -k \"vite --host 127.0.0.1\" \"cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 wait-on tcp:5173 && electron .\"",
+    "dist:win": "npm run build && electron-builder --win --publish never",
+    "dist:mac": "npm run build && electron-builder --mac --publish never"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",

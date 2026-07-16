@@ -1,0 +1,35 @@
+appId: com.honghuaijie.fanqiepush
+productName: 番茄章节发布工具
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**
+  - dist-electron/**
+  - package.json
+  - node_modules/**
+asarUnpack:
+  - node_modules/playwright-core/**
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  include: build/installer.nsh
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  deleteAppDataOnUninstall: false
+mac:
+  icon: build/icon.icns
+  identity: null
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch:
+        - universal
+dmg:
+  sign: false
