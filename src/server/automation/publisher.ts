@@ -1,5 +1,6 @@
 import path from "node:path";
 import { chromium, type BrowserContext } from "playwright";
+import { PUBLISH_LOG_FILE } from "../../shared/constants";
 import type { PublishPlanItem } from "../../shared/types";
 import { importBookFolder, writePublishLog } from "../file-system";
 import { updateChapterStatus } from "../publish-log";
@@ -95,6 +96,14 @@ export interface BrowserLauncher {
   openBrowser(profileDir: string): Promise<BrowserSession>;
 }
 
+export interface PublishControllerOptions {
+  resolveProfileDir?: (input: StartPublishInput) => string;
+  onGeneratedFile?: (filePath: string) => Promise<void> | void;
+  onTaskStarted?: (input: StartPublishInput) => Promise<void> | void;
+  onTaskFinished?: () => Promise<void> | void;
+  chromeExecutablePath?: string;
+}
+
 export interface PublishController {
   getState(): PublishRunState;
   start(input: StartPublishInput): Promise<PublishRunState>;
@@ -125,13 +134,32 @@ function isLoginSnapshot(snapshot: BrowserPageSnapshot): boolean {
     || buttons.includes("登录/注册");
 }
 
-export function createPublishController(launcher: BrowserLauncher): PublishController {
+export function createPublishController(
+  launcher: BrowserLauncher,
+  options: PublishControllerOptions = {}
+): PublishController {
   let state: PublishRunState = { status: "idle" };
   let session: BrowserSession | null = null;
   let currentBookName: string | null = null;
   let currentFolderPath: string | null = null;
   let currentItems: PublishPlanItem[] = [];
   let logs: PublishRunLogEntry[] = [];
+  let taskActive = false;
+
+  async function notifyTaskStarted(input: StartPublishInput) {
+    await options.onTaskStarted?.(input);
+    taskActive = true;
+  }
+
+  async function notifyTaskFinished() {
+    if (!taskActive) return;
+    taskActive = false;
+    await options.onTaskFinished?.();
+  }
+
+  async function notifyGeneratedPublishLog(folderPath: string) {
+    await options.onGeneratedFile?.(path.join(folderPath, PUBLISH_LOG_FILE));
+  }
 
   function withLogs(nextState: PublishRunState): PublishRunState {
     state = { ...nextState, logs: [...logs] };
@@ -218,6 +246,7 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
     },
 
     async start(input) {
+      await notifyTaskStarted(input);
       if (session) {
         currentBookName = input.bookName;
         currentFolderPath = input.folderPath;
@@ -227,7 +256,8 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
         return openCurrentChapterEditor();
       }
 
-      const profileDir = path.join(input.folderPath, ".fanqie-browser-profile");
+      const profileDir = options.resolveProfileDir?.(input)
+        ?? path.join(input.folderPath, ".fanqie-browser-profile");
       try {
         logs = [];
         session = await launcher.openBrowser(profileDir);
@@ -245,6 +275,7 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
         currentBookName = null;
         currentFolderPath = null;
         currentItems = [];
+        await notifyTaskFinished();
         appendLog(error instanceof Error ? error.message : "启动发布失败。", "error");
         if (isBrowserProfileInUseError(error)) {
           throw new Error("发布专用浏览器已经在运行。请先关闭工具打开的那个独立 Chrome 窗口，或者在工具里点“停止发布”后再重新开始。");
@@ -360,6 +391,7 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
         status: "drafted"
       });
       await writePublishLog(folderPath, nextLog);
+      await notifyGeneratedPublishLog(folderPath);
 
       appendLog(`第${chapter.chapterNumber}章已保存为草稿。`, "success");
       return withLogs({
@@ -426,6 +458,7 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
           status: "scheduled"
         });
         await writePublishLog(folderPath, publishLog);
+        await notifyGeneratedPublishLog(folderPath);
         completedCount += 1;
         appendLog(`第${chapter.chapterNumber}章已定时发布：${currentPlanItem.plannedDate} ${currentPlanItem.plannedTime}。`, "success");
 
@@ -442,6 +475,7 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
       }
 
       appendLog(`全部 ${completedCount} 章已定时发布完成。`, "success");
+      await notifyTaskFinished();
       return withLogs({
         status: "stopped",
         currentChapter: remainingItems.at(-1)?.chapterNumber,
@@ -455,13 +489,14 @@ export function createPublishController(launcher: BrowserLauncher): PublishContr
       currentBookName = null;
       currentFolderPath = null;
       currentItems = [];
+      await notifyTaskFinished();
       appendLog("已停止发布任务。", "warning");
       return withLogs({ status: "stopped", message: "已停止发布任务。" });
     }
   };
 }
 
-export const publishController = createPublishController({
+export const playwrightBrowserLauncher: BrowserLauncher = {
   async openBrowser(profileDir) {
     const context = await chromium.launchPersistentContext(profileDir, {
       channel: "chrome",
@@ -1385,4 +1420,6 @@ export const publishController = createPublishController({
       }
     };
   }
-});
+};
+
+export const publishController = createPublishController(playwrightBrowserLauncher);

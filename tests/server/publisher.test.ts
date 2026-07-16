@@ -1,7 +1,7 @@
 import { access, mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createPublishController } from "../../src/server/automation/publisher";
 import type { PublishPlanItem } from "../../src/shared/types";
 
@@ -25,6 +25,80 @@ afterEach(async () => {
 });
 
 describe("publisher controller", () => {
+  it("uses the desktop account profile resolver and task lifecycle callbacks", async () => {
+    const opened: string[] = [];
+    const onTaskStarted = vi.fn();
+    const onTaskFinished = vi.fn();
+    const controller = createPublishController({
+      openBrowser: async (profileDir) => {
+        opened.push(profileDir);
+        return {
+          goto: async () => undefined,
+          inspect: async () => ({
+            url: "https://fanqienovel.com/main/writer/book-manage",
+            title: "作者专区",
+            visibleText: [],
+            buttons: [],
+            links: []
+          }),
+          openChapterManager: async () => undefined,
+          openNewChapterEditor: async () => undefined,
+          saveDraftChapter: async () => undefined,
+          close: async () => undefined
+        };
+      }
+    }, {
+      resolveProfileDir: () => "/app-data/accounts/default/chrome-profile",
+      onTaskStarted,
+      onTaskFinished
+    });
+    const input = {
+      bookName: "测试书",
+      folderPath: "/books/测试书",
+      items: [planItem]
+    };
+
+    await controller.start(input);
+    await controller.stop();
+
+    expect(opened).toEqual(["/app-data/accounts/default/chrome-profile"]);
+    expect(onTaskStarted).toHaveBeenCalledWith(input);
+    expect(onTaskFinished).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports the generated publish log after saving the current draft", async () => {
+    tempDir = await mkdtemp(path.join(os.tmpdir(), "fanqie-generated-log-"));
+    const bookDir = path.join(tempDir, "测试书");
+    await mkdir(bookDir);
+    await writeFile(path.join(bookDir, "第001章 开局.md"), "# 第001章 开局\n\n正文内容", "utf8");
+    const onGeneratedFile = vi.fn();
+    const controller = createPublishController({
+      openBrowser: async () => ({
+        goto: async () => undefined,
+        inspect: async () => ({
+          url: "https://fanqienovel.com/main/writer/book-manage",
+          title: "作者专区",
+          visibleText: [],
+          buttons: [],
+          links: []
+        }),
+        openChapterManager: async () => undefined,
+        openNewChapterEditor: async () => undefined,
+        saveDraftChapter: async () => undefined,
+        close: async () => undefined
+      })
+    }, { onGeneratedFile });
+
+    await controller.start({
+      bookName: "测试书",
+      folderPath: bookDir,
+      items: [{ ...planItem, fileName: "第001章 开局.md" }]
+    });
+    await controller.saveCurrentDraft();
+
+    expect(onGeneratedFile).toHaveBeenCalledWith(path.join(bookDir, ".fanqie-publish.json"));
+  });
+
   it("starts a browser session and exposes paused skeleton state", async () => {
     const opened: string[] = [];
     const controller = createPublishController({
@@ -750,4 +824,3 @@ describe("publisher controller", () => {
     await expect(access(path.join(bookDir, ".fanqie-publish.json"))).rejects.toThrow();
   });
 });
-
