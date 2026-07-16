@@ -1,9 +1,13 @@
 import { type ErrorRequestHandler, Router } from "express";
 import { z } from "zod";
-import { publishController } from "./automation/publisher";
+import type { PublishController } from "./automation/publisher";
 import { handleGeneratePlan, handleImportBook } from "./route-handlers";
 
-export function createRoutes(): Router {
+export interface CreateRoutesOptions {
+  publishController: PublishController;
+}
+
+export function createRoutes({ publishController }: CreateRoutesOptions): Router {
   const router = Router();
 
   router.post("/import", async (req, res, next) => {
