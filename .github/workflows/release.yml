@@ -1,0 +1,108 @@
+name: 构建桌面安装包
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: 构建 ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+            command: npm run dist:win
+            artifact: desktop-windows-x64
+          - name: macOS Universal
+            os: macos-latest
+            command: npm run dist:mac
+            artifact: desktop-macos-universal
+    runs-on: ${{ matrix.os }}
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 配置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 运行测试
+        run: npm test
+
+      - name: 类型检查
+        run: npm run typecheck
+
+      - name: 生成安装包
+        run: ${{ matrix.command }}
+
+      - name: 生成 Windows 校验和
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem release -Filter "*-win-x64.exe" | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$hash  $($_.Name)"
+          } | Set-Content release/SHA256SUMS-windows.txt
+
+      - name: 生成 macOS 校验和
+        if: runner.os == 'macOS'
+        shell: bash
+        run: shasum -a 256 release/*-mac-universal.dmg > release/SHA256SUMS-macos.txt
+
+      - name: 上传 Windows 安装包
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            release/*-win-x64.exe
+            release/SHA256SUMS-windows.txt
+          if-no-files-found: error
+
+      - name: 上传 macOS 安装包
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            release/*-mac-universal.dmg
+            release/SHA256SUMS-macos.txt
+          if-no-files-found: error
+
+  release:
+    name: 创建 GitHub 预发布
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: 下载全部安装包
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: 创建预发布
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: >-
+          gh release create "$GITHUB_REF_NAME"
+          release-assets/*
+          --verify-tag
+          --generate-notes
+          --prerelease
+          --title "番茄章节发布工具 $GITHUB_REF_NAME（未签名测试版）"
