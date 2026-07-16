@@ -8,20 +8,30 @@ import {
   shell
 } from "electron";
 import { createPublishController, playwrightBrowserLauncher } from "../server/automation/publisher";
+import type { PublishController } from "../server/automation/publisher";
 import { startLocalServer, type LocalServerHandle } from "../server/start-server";
 import { createAppDataStore } from "./app-data";
 import { createDesktopPaths } from "./app-paths";
 import { detectChrome } from "./chrome";
 import { isAllowedRendererUrl, registerDesktopIpc } from "./ipc";
+import { confirmCloseIfPublishing } from "./lifecycle";
+import { createLogStore } from "./log-store";
 
 const RELEASE_URL = "https://github.com/Honghuaijie/fanqiePush/releases";
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 
 let mainWindow: BrowserWindow | null = null;
 let localServer: LocalServerHandle | null = null;
-let shuttingDown = false;
+let publishController: PublishController | null = null;
+let quitApproved = false;
+let quitInProgress = false;
 
-app.setPath("userData", path.join(app.getPath("appData"), "fanqie-publish-tool"));
+app.setPath(
+  "userData",
+  process.env.FANQIE_APP_DATA_DIR
+    ? path.resolve(process.env.FANQIE_APP_DATA_DIR)
+    : path.join(app.getPath("appData"), "fanqie-publish-tool")
+);
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
@@ -48,9 +58,14 @@ async function startDesktopApp() {
 
   const paths = createDesktopPaths(app.getPath("userData"));
   const dataStore = createAppDataStore(paths);
+  const logStore = createLogStore({
+    logsDir: paths.logsDir,
+    diagnosticsDir: paths.diagnosticsDir
+  });
+  await logStore.pruneExpired();
   const chrome = await detectChrome();
   const apiToken = randomBytes(32).toString("hex");
-  const publishController = createPublishController(playwrightBrowserLauncher, {
+  publishController = createPublishController(playwrightBrowserLauncher, {
     resolveProfileDir: () => paths.defaultAccountProfile,
     chromeExecutablePath: chrome.executablePath,
     onGeneratedFile: async (filePath) => {
@@ -61,7 +76,8 @@ async function startDesktopApp() {
       folderPath: input.folderPath,
       startedAt: new Date().toISOString()
     }),
-    onTaskFinished: () => dataStore.clearTaskMarker()
+    onTaskFinished: () => dataStore.clearTaskMarker(),
+    onLogEntry: (entry) => logStore.append(entry.level, entry.message)
   });
 
   localServer = await startLocalServer({
@@ -115,7 +131,17 @@ async function startDesktopApp() {
       openReleasePage: async () => {
         await shell.openExternal(RELEASE_URL);
       },
-      exportDiagnostics: async () => null,
+      exportDiagnostics: async () => {
+        const settings = await dataStore.readSettings();
+        const diagnosticPath = await logStore.exportDiagnostics({
+          appVersion: app.getVersion(),
+          platform: process.platform,
+          chromeInstalled: chrome.installed,
+          settings
+        });
+        await logStore.append("info", "已导出诊断包。", { diagnosticPath });
+        return diagnosticPath;
+      },
       previewCleanup: async () => ({ applicationData: [], novelRecords: [] }),
       beginUninstall: async () => {
         throw new Error("卸载清理功能尚未启用。");
@@ -142,20 +168,42 @@ async function startDesktopApp() {
     if (!isAllowedRendererUrl(targetUrl, allowedRendererOrigins)) event.preventDefault();
   });
   mainWindow.once("ready-to-show", () => mainWindow?.show());
+  mainWindow.on("close", (event) => {
+    if (quitApproved) return;
+    event.preventDefault();
+    void requestQuit();
+  });
   mainWindow.on("closed", () => {
     mainWindow = null;
-    app.quit();
   });
 
   await mainWindow.loadURL(rendererUrl);
 }
 
-app.on("before-quit", (event) => {
-  if (shuttingDown || !localServer) return;
-  event.preventDefault();
-  shuttingDown = true;
-  void localServer.close().finally(() => {
-    localServer = null;
+async function requestQuit() {
+  if (quitInProgress || quitApproved) return;
+  quitInProgress = true;
+  try {
+    const allowed = await confirmCloseIfPublishing({
+      status: publishController?.getState().status ?? "idle",
+      showMessageBox: (options) => dialog.showMessageBox(options),
+      stop: () => publishController?.stop()
+    });
+    if (!allowed) return;
+
+    quitApproved = true;
+    if (localServer) {
+      await localServer.close();
+      localServer = null;
+    }
     app.quit();
-  });
+  } finally {
+    quitInProgress = false;
+  }
+}
+
+app.on("before-quit", (event) => {
+  if (quitApproved) return;
+  event.preventDefault();
+  void requestQuit();
 });

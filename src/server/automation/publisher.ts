@@ -101,6 +101,7 @@ export interface PublishControllerOptions {
   onGeneratedFile?: (filePath: string) => Promise<void> | void;
   onTaskStarted?: (input: StartPublishInput) => Promise<void> | void;
   onTaskFinished?: () => Promise<void> | void;
+  onLogEntry?: (entry: PublishRunLogEntry) => Promise<void> | void;
   chromeExecutablePath?: string;
 }
 
@@ -167,8 +168,10 @@ export function createPublishController(
   }
 
   function appendLog(message: string, level: PublishLogLevel = "info") {
-    logs = [...logs, { time: new Date().toISOString(), level, message }].slice(-100);
+    const entry = { time: new Date().toISOString(), level, message };
+    logs = [...logs, entry].slice(-100);
     state = { ...state, logs: [...logs] };
+    void Promise.resolve(options.onLogEntry?.(entry)).catch(() => undefined);
   }
 
   async function openCurrentChapterEditor(): Promise<PublishRunState> {

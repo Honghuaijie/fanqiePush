@@ -33,6 +33,7 @@ export function App() {
   const [recentFolders, setRecentFolders] = useState<string[]>([]);
   const [desktopInfo, setDesktopInfo] = useState<DesktopInfo | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [showInterruptedWarning, setShowInterruptedWarning] = useState(false);
 
   const canStart = useMemo(() => planItems.length > 0, [planItems.length]);
 
@@ -43,6 +44,7 @@ export function App() {
       .then((info) => {
         setDesktopInfo(info);
         setRecentFolders(info.recentFolders.slice(0, 10));
+        setShowInterruptedWarning(Boolean(info.interruptedTask));
       })
       .catch(() => undefined);
   }, []);
@@ -166,6 +168,15 @@ export function App() {
           <button className="secondary" onClick={() => setFlowGuideOpen(true)}>查看发布流程</button>
         </div>
       </header>
+      {showInterruptedWarning && desktopInfo?.interruptedTask ? (
+        <section className="interrupted-task-warning" role="alert">
+          <div>
+            <strong>上次任务异常结束，请先检查番茄后台。</strong>
+            <p>小说：《{desktopInfo.interruptedTask.bookName}》。工具不会自动继续，避免重复提交章节。</p>
+          </div>
+          <button className="secondary" type="button" onClick={() => setShowInterruptedWarning(false)}>我已检查</button>
+        </section>
+      ) : null}
       <div className="content-grid">
         <ImportPanel
           folderPath={folderPath}
@@ -210,6 +221,7 @@ export function App() {
           onClose={() => setSettingsOpen(false)}
           onOpenPath={handleOpenPath}
           onOpenReleasePage={() => getDesktopBridge()?.openReleasePage()}
+          onExportDiagnostics={() => getDesktopBridge()?.exportDiagnostics() ?? Promise.resolve(null)}
         />
       ) : null}
     </main>

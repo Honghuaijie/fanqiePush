@@ -177,6 +177,24 @@ describe("desktop settings", () => {
     expect(screen.getByText(info.generatedFiles[0])).toBeTruthy();
   });
 
+  it("exports a diagnostic file and opens its directory", async () => {
+    const onExportDiagnostics = vi.fn(async () => "/app/diagnostics/diagnostic.json");
+    const onOpenPath = vi.fn();
+    render(<SettingsPanel
+      visible
+      info={info}
+      onClose={vi.fn()}
+      onOpenPath={onOpenPath}
+      onOpenReleasePage={vi.fn()}
+      onExportDiagnostics={onExportDiagnostics}
+    />);
+
+    await userEvent.click(screen.getByRole("button", { name: "导出诊断包" }));
+
+    expect(onExportDiagnostics).toHaveBeenCalledTimes(1);
+    expect(onOpenPath).toHaveBeenCalledWith("/app/diagnostics/diagnostic.json");
+  });
+
   it("opens the exact directory belonging to the clicked row", async () => {
     const onOpenPath = vi.fn();
     render(<SettingsPanel
@@ -190,5 +208,32 @@ describe("desktop settings", () => {
     await userEvent.click(screen.getByRole("button", { name: "打开 Chrome 登录资料文件夹" }));
 
     expect(onOpenPath).toHaveBeenCalledWith(info.paths.chromeProfile);
+  });
+});
+
+describe("interrupted publish warning", () => {
+  it("asks the user to inspect Fanqie without automatically resuming", async () => {
+    const bridge = createDesktopBridge({
+      getDesktopInfo: vi.fn(async () => ({
+        version: "0.2.0",
+        releaseUrl: "https://example.com/releases",
+        chrome: { installed: true },
+        paths: { applicationData: "/app", chromeProfile: "/profile", logs: "/logs" },
+        usage: { applicationBytes: 0, profileBytes: 0, logsBytes: 0, generatedBytes: 0 },
+        recentFolders: [],
+        generatedFiles: [],
+        interruptedTask: {
+          bookName: "测试书",
+          folderPath: "/books/测试书",
+          startedAt: "2026-07-16T10:00:00.000Z"
+        }
+      }))
+    });
+    window.fanqieDesktop = bridge;
+    render(<App />);
+
+    expect(await screen.findByText("上次任务异常结束，请先检查番茄后台。"))
+      .toBeTruthy();
+    expect(bridge.getRuntime).not.toHaveBeenCalled();
   });
 });

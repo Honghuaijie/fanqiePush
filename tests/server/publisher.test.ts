@@ -25,6 +25,38 @@ afterEach(async () => {
 });
 
 describe("publisher controller", () => {
+  it("forwards run log entries to the desktop log callback", async () => {
+    const onLogEntry = vi.fn();
+    const controller = createPublishController({
+      openBrowser: async () => ({
+        goto: async () => undefined,
+        inspect: async () => ({
+          url: "https://fanqienovel.com/main/writer/book-manage",
+          title: "作者专区",
+          visibleText: [],
+          buttons: [],
+          links: []
+        }),
+        openChapterManager: async () => undefined,
+        openNewChapterEditor: async () => undefined,
+        saveDraftChapter: async () => undefined,
+        close: async () => undefined
+      })
+    }, { onLogEntry });
+
+    await controller.start({
+      bookName: "测试书",
+      folderPath: "/books/测试书",
+      items: [planItem]
+    });
+    await Promise.resolve();
+
+    expect(onLogEntry).toHaveBeenCalledWith(expect.objectContaining({
+      level: "info",
+      message: "正在打开番茄作者后台。"
+    }));
+  });
+
   it("passes the detected Chrome executable to the browser launcher", async () => {
     const launches: Array<{ profileDir: string; executablePath?: string }> = [];
     const controller = createPublishController({

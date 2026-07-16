@@ -6,6 +6,7 @@ interface SettingsPanelProps {
   onClose: () => void;
   onOpenPath: (targetPath: string) => void | Promise<void>;
   onOpenReleasePage: () => void | Promise<void>;
+  onExportDiagnostics?: () => Promise<string | null>;
 }
 
 function formatBytes(bytes: number): string {
@@ -110,6 +111,24 @@ export function SettingsPanel(props: SettingsPanelProps) {
           </div>
           <button type="button" onClick={props.onOpenReleasePage}>查看新版本</button>
         </section>
+
+        {props.onExportDiagnostics ? (
+          <section className="settings-section settings-version-row">
+            <div>
+              <h3>问题诊断</h3>
+              <p className="helper-text">诊断包会隐藏正文、登录凭据和接口密钥。</p>
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                const diagnosticPath = await props.onExportDiagnostics?.();
+                if (diagnosticPath) await props.onOpenPath(diagnosticPath);
+              }}
+            >
+              导出诊断包
+            </button>
+          </section>
+        ) : null}
       </section>
     </div>
   );
