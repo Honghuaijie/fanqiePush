@@ -103,6 +103,15 @@ export interface PublishControllerOptions {
   onTaskFinished?: () => Promise<void> | void;
   onLogEntry?: (entry: PublishRunLogEntry) => Promise<void> | void;
   chromeExecutablePath?: string;
+  bookManageUrl?: string;
+}
+
+export interface PlaywrightLauncherOptions {
+  channel?: "chrome";
+  executablePath?: string;
+  headless?: boolean;
+  viewport?: { width: number; height: number };
+  onRequest?: (url: string) => void;
 }
 
 export interface PublishController {
@@ -180,7 +189,7 @@ export function createPublishController(
     }
 
     appendLog("正在打开番茄作者后台。");
-    await session.goto(FANQIE_WRITER_BOOK_MANAGE_URL);
+    await session.goto(options.bookManageUrl ?? FANQIE_WRITER_BOOK_MANAGE_URL);
     const snapshot = await session.inspect();
     if (isLoginSnapshot(snapshot)) {
       appendLog("检测到未登录，等待手动登录。", "warning");
@@ -499,14 +508,19 @@ export function createPublishController(
   };
 }
 
-export const playwrightBrowserLauncher: BrowserLauncher = {
+export function createPlaywrightBrowserLauncher(options: PlaywrightLauncherOptions = {}): BrowserLauncher {
+  return {
   async openBrowser(profileDir, executablePath) {
+    const selectedExecutablePath = options.executablePath ?? executablePath;
     const context = await chromium.launchPersistentContext(profileDir, {
-      ...(executablePath ? { executablePath } : { channel: "chrome" as const }),
-      headless: false,
-      viewport: { width: 1400, height: 900 }
+      ...(selectedExecutablePath
+        ? { executablePath: selectedExecutablePath }
+        : { channel: options.channel ?? "chrome" as const }),
+      headless: options.headless ?? false,
+      viewport: options.viewport ?? { width: 1400, height: 900 }
     });
     let activePage = context.pages()[0] ?? (await context.newPage());
+    context.on("request", (request) => options.onRequest?.(request.url()));
     await context.addInitScript("window.__name = window.__name || ((target) => target);");
     await activePage.evaluate("window.__name = window.__name || ((target) => target);");
     await activePage.bringToFront();
@@ -698,7 +712,6 @@ export const playwrightBrowserLauncher: BrowserLauncher = {
     async function openPublishSettingsFromDetection() {
       await activePage.waitForTimeout(800);
       let submitClicked = await clickIfVisible("提交");
-      let basicCheckClicked = false;
       let fullCheckClicked = false;
       let genericCheckClicked = false;
 
@@ -712,14 +725,6 @@ export const playwrightBrowserLauncher: BrowserLauncher = {
           await activePage.waitForTimeout(800);
           continue;
         }
-        if (state.hasBasicCheck) {
-          if (!basicCheckClicked) {
-            await clickVisibleButton("仅基础检测", { exact: false, timeout: 10000 });
-            basicCheckClicked = true;
-          }
-          await activePage.waitForTimeout(1200);
-          continue;
-        }
         if (state.hasFullCheck) {
           if (!fullCheckClicked) {
             await clickVisibleButton("全面检测", { exact: false, timeout: 10000 });
@@ -727,6 +732,9 @@ export const playwrightBrowserLauncher: BrowserLauncher = {
           }
           await activePage.waitForTimeout(1200);
           continue;
+        }
+        if (state.hasBasicCheck) {
+          throw new Error("内容检测页面没有提供“全面检测”，已停止发布，不会改用基础检测。");
         }
         if (state.hasAnyCheck) {
           if (!genericCheckClicked) {
@@ -1255,6 +1263,9 @@ export const playwrightBrowserLauncher: BrowserLauncher = {
           }
         }
         if (lastError) throw lastError;
+        await activePage.waitForURL((url) => url.pathname.includes("/chapter-manage/"), {
+          timeout: 15000
+        });
         await activePage.waitForLoadState("domcontentloaded");
         await activePage.bringToFront();
       },
@@ -1423,6 +1434,9 @@ export const playwrightBrowserLauncher: BrowserLauncher = {
       }
     };
   }
-};
+  };
+}
+
+export const playwrightBrowserLauncher = createPlaywrightBrowserLauncher();
 
 export const publishController = createPublishController(playwrightBrowserLauncher);
