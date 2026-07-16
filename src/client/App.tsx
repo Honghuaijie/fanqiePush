@@ -8,6 +8,8 @@ import { PublishFlowGuide } from "./components/PublishFlowGuide";
 import { PublishControls } from "./components/PublishControls";
 import { RangePanel } from "./components/RangePanel";
 import { getDesktopBridge } from "./desktop";
+import { SettingsPanel } from "./components/SettingsPanel";
+import type { DesktopInfo } from "../desktop/contracts";
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -29,6 +31,8 @@ export function App() {
   const [flowGuideOpen, setFlowGuideOpen] = useState(false);
   const [publishState, setPublishState] = useState<PublishRunState>({ status: "idle" });
   const [recentFolders, setRecentFolders] = useState<string[]>([]);
+  const [desktopInfo, setDesktopInfo] = useState<DesktopInfo | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const canStart = useMemo(() => planItems.length > 0, [planItems.length]);
 
@@ -36,7 +40,10 @@ export function App() {
     const desktop = getDesktopBridge();
     if (!desktop) return;
     void desktop.getDesktopInfo()
-      .then((info) => setRecentFolders(info.recentFolders.slice(0, 10)))
+      .then((info) => {
+        setDesktopInfo(info);
+        setRecentFolders(info.recentFolders.slice(0, 10));
+      })
       .catch(() => undefined);
   }, []);
 
@@ -142,6 +149,11 @@ export function App() {
     }
   }
 
+  async function handleOpenPath(targetPath: string) {
+    const result = await getDesktopBridge()?.openPath(targetPath);
+    if (result && !result.ok) setError(result.error ?? "无法打开文件夹");
+  }
+
   return (
     <main className="app-shell">
       <header className="app-header">
@@ -149,7 +161,10 @@ export function App() {
           <h1>番茄章节发布工具</h1>
           <p>导入 Markdown 章节，生成排期，并提交到番茄定时发布。</p>
         </div>
-        <button className="secondary" onClick={() => setFlowGuideOpen(true)}>查看发布流程</button>
+        <div className="header-actions">
+          {desktopInfo ? <button className="secondary" onClick={() => setSettingsOpen(true)}>设置</button> : null}
+          <button className="secondary" onClick={() => setFlowGuideOpen(true)}>查看发布流程</button>
+        </div>
       </header>
       <div className="content-grid">
         <ImportPanel
@@ -188,6 +203,15 @@ export function App() {
       </div>
       <FinalPreview items={planItems} visible={previewOpen} onCancel={() => setPreviewOpen(false)} onConfirm={handleConfirmPreview} />
       <PublishFlowGuide visible={flowGuideOpen} onClose={() => setFlowGuideOpen(false)} />
+      {desktopInfo ? (
+        <SettingsPanel
+          visible={settingsOpen}
+          info={desktopInfo}
+          onClose={() => setSettingsOpen(false)}
+          onOpenPath={handleOpenPath}
+          onOpenReleasePage={() => getDesktopBridge()?.openReleasePage()}
+        />
+      ) : null}
     </main>
   );
 }

@@ -7,6 +7,8 @@ import type { ComponentProps } from "react";
 import { importBook } from "../../src/client/api";
 import { ImportPanel } from "../../src/client/components/ImportPanel";
 import { App } from "../../src/client/App";
+import { SettingsPanel } from "../../src/client/components/SettingsPanel";
+import type { DesktopInfo } from "../../src/desktop/contracts";
 import type { FanqieDesktopBridge } from "../../src/desktop/contracts";
 
 afterEach(() => {
@@ -132,5 +134,61 @@ describe("desktop novel import", () => {
 
     await waitFor(() => expect(bridge.rememberRecentFolder).toHaveBeenCalledWith("/books/测试书"));
     expect(await screen.findByText("未创建")).toBeTruthy();
+  });
+});
+
+describe("desktop settings", () => {
+  const info: DesktopInfo = {
+    version: "0.2.0",
+    releaseUrl: "https://example.com/releases",
+    chrome: {
+      installed: true,
+      executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    },
+    paths: {
+      applicationData: "/Users/test/Library/Application Support/fanqie-publish-tool",
+      chromeProfile: "/Users/test/Library/Application Support/fanqie-publish-tool/accounts/default/chrome-profile",
+      logs: "/Users/test/Library/Application Support/fanqie-publish-tool/logs"
+    },
+    usage: {
+      applicationBytes: 1024,
+      profileBytes: 2048,
+      logsBytes: 512,
+      generatedBytes: 128
+    },
+    recentFolders: [],
+    generatedFiles: ["/books/测试书/.fanqie-publish.json"]
+  };
+
+  it("shows version, Chrome status, and every full storage path", () => {
+    render(<SettingsPanel
+      visible
+      info={info}
+      onClose={vi.fn()}
+      onOpenPath={vi.fn()}
+      onOpenReleasePage={vi.fn()}
+    />);
+
+    expect(screen.getByText("0.2.0")).toBeTruthy();
+    expect(screen.getByText("已找到 Chrome")).toBeTruthy();
+    expect(screen.getByText(info.paths.applicationData)).toBeTruthy();
+    expect(screen.getByText(info.paths.chromeProfile)).toBeTruthy();
+    expect(screen.getByText(info.paths.logs)).toBeTruthy();
+    expect(screen.getByText(info.generatedFiles[0])).toBeTruthy();
+  });
+
+  it("opens the exact directory belonging to the clicked row", async () => {
+    const onOpenPath = vi.fn();
+    render(<SettingsPanel
+      visible
+      info={info}
+      onClose={vi.fn()}
+      onOpenPath={onOpenPath}
+      onOpenReleasePage={vi.fn()}
+    />);
+
+    await userEvent.click(screen.getByRole("button", { name: "打开 Chrome 登录资料文件夹" }));
+
+    expect(onOpenPath).toHaveBeenCalledWith(info.paths.chromeProfile);
   });
 });

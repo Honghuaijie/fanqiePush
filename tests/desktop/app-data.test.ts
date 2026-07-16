@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import * as fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -102,5 +102,26 @@ describe("desktop app data", () => {
 
     await store.clearTaskMarker();
     await expect(store.readTaskMarker()).resolves.toBeUndefined();
+  });
+
+  it("counts application storage and only registered novel record files", async () => {
+    const { paths, store } = await createStore();
+    const bookDir = path.join(tempDir!, "outside-book");
+    const publishRecord = path.join(bookDir, ".fanqie-publish.json");
+    await mkdir(paths.defaultAccountProfile, { recursive: true });
+    await mkdir(paths.logsDir, { recursive: true });
+    await mkdir(bookDir, { recursive: true });
+    await writeFile(path.join(paths.defaultAccountProfile, "profile.bin"), "1234", "utf8");
+    await writeFile(path.join(paths.logsDir, "desktop.log"), "123", "utf8");
+    await writeFile(path.join(bookDir, "第001章 开局.md"), "这段正文不能计入生成文件占用", "utf8");
+    await writeFile(publishRecord, "12345", "utf8");
+    await store.registerGeneratedFile(publishRecord);
+
+    const usage = await store.getStorageUsage();
+
+    expect(usage.profileBytes).toBe(4);
+    expect(usage.logsBytes).toBe(3);
+    expect(usage.generatedBytes).toBe(5);
+    expect(usage.applicationBytes).toBeGreaterThanOrEqual(7);
   });
 });

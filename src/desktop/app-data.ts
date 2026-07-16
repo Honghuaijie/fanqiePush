@@ -1,5 +1,6 @@
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
+import path from "node:path";
 import type { DesktopPaths } from "./app-paths";
 
 export interface DesktopSettings {
@@ -78,6 +79,24 @@ export function createAppDataStore(
     }
   }
 
+  async function pathSize(targetPath: string): Promise<number> {
+    try {
+      const details = await stat(targetPath);
+      if (details.isFile()) return details.size;
+      if (!details.isDirectory()) return 0;
+
+      const entries = await readdir(targetPath, { withFileTypes: true });
+      const sizes = await Promise.all(entries.map((entry) => {
+        if (entry.isSymbolicLink()) return 0;
+        return pathSize(path.join(targetPath, entry.name));
+      }));
+      return sizes.reduce((total, size) => total + size, 0);
+    } catch (error) {
+      if (isMissingFile(error)) return 0;
+      throw error;
+    }
+  }
+
   return {
     readSettings,
 
@@ -99,6 +118,22 @@ export function createAppDataStore(
     },
 
     readGeneratedFiles,
+
+    async getStorageUsage() {
+      const generatedFiles = await readGeneratedFiles();
+      const [applicationBytes, profileBytes, logsBytes, generatedSizes] = await Promise.all([
+        pathSize(paths.root),
+        pathSize(paths.defaultAccountProfile),
+        pathSize(paths.logsDir),
+        Promise.all(generatedFiles.map(pathSize))
+      ]);
+      return {
+        applicationBytes,
+        profileBytes,
+        logsBytes,
+        generatedBytes: generatedSizes.reduce((total, size) => total + size, 0)
+      };
+    },
 
     async markTaskActive(task: InterruptedTask) {
       await atomicWrite(paths.interruptedTaskFile, `${JSON.stringify(task, null, 2)}\n`);

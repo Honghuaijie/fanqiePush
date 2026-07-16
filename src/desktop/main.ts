@@ -92,6 +92,7 @@ async function startDesktopApp() {
       },
       getDesktopInfo: async () => {
         const settings = await dataStore.readSettings();
+        const usage = await dataStore.getStorageUsage();
         return {
           version: app.getVersion(),
           releaseUrl: RELEASE_URL,
@@ -101,12 +102,7 @@ async function startDesktopApp() {
             chromeProfile: paths.defaultAccountProfile,
             logs: paths.logsDir
           },
-          usage: {
-            applicationBytes: 0,
-            profileBytes: 0,
-            logsBytes: 0,
-            generatedBytes: 0
-          },
+          usage,
           recentFolders: settings.recentFolders,
           generatedFiles: await dataStore.readGeneratedFiles(),
           interruptedTask: await dataStore.readTaskMarker()
