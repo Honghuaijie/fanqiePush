@@ -93,7 +93,7 @@ export interface BrowserSession {
 }
 
 export interface BrowserLauncher {
-  openBrowser(profileDir: string): Promise<BrowserSession>;
+  openBrowser(profileDir: string, executablePath?: string): Promise<BrowserSession>;
 }
 
 export interface PublishControllerOptions {
@@ -260,7 +260,7 @@ export function createPublishController(
         ?? path.join(input.folderPath, ".fanqie-browser-profile");
       try {
         logs = [];
-        session = await launcher.openBrowser(profileDir);
+        session = await launcher.openBrowser(profileDir, options.chromeExecutablePath);
         currentBookName = input.bookName;
         currentFolderPath = input.folderPath;
         currentItems = input.items;
@@ -497,9 +497,9 @@ export function createPublishController(
 }
 
 export const playwrightBrowserLauncher: BrowserLauncher = {
-  async openBrowser(profileDir) {
+  async openBrowser(profileDir, executablePath) {
     const context = await chromium.launchPersistentContext(profileDir, {
-      channel: "chrome",
+      ...(executablePath ? { executablePath } : { channel: "chrome" as const }),
       headless: false,
       viewport: { width: 1400, height: 900 }
     });

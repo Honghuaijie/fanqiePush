@@ -25,6 +25,42 @@ afterEach(async () => {
 });
 
 describe("publisher controller", () => {
+  it("passes the detected Chrome executable to the browser launcher", async () => {
+    const launches: Array<{ profileDir: string; executablePath?: string }> = [];
+    const controller = createPublishController({
+      openBrowser: async (profileDir, executablePath) => {
+        launches.push({ profileDir, executablePath });
+        return {
+          goto: async () => undefined,
+          inspect: async () => ({
+            url: "https://fanqienovel.com/main/writer/book-manage",
+            title: "作者专区",
+            visibleText: [],
+            buttons: [],
+            links: []
+          }),
+          openChapterManager: async () => undefined,
+          openNewChapterEditor: async () => undefined,
+          saveDraftChapter: async () => undefined,
+          close: async () => undefined
+        };
+      }
+    }, {
+      chromeExecutablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    });
+
+    await controller.start({
+      bookName: "测试书",
+      folderPath: "/books/测试书",
+      items: [planItem]
+    });
+
+    expect(launches).toEqual([{
+      profileDir: path.join("/books/测试书", ".fanqie-browser-profile"),
+      executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    }]);
+  });
+
   it("uses the desktop account profile resolver and task lifecycle callbacks", async () => {
     const opened: string[] = [];
     const onTaskStarted = vi.fn();
