@@ -1,4 +1,6 @@
 import { randomBytes } from "node:crypto";
+import { spawn } from "node:child_process";
+import { readdir } from "node:fs/promises";
 import path from "node:path";
 import {
   app,
@@ -13,6 +15,7 @@ import { startLocalServer, type LocalServerHandle } from "../server/start-server
 import { createAppDataStore } from "./app-data";
 import { createDesktopPaths } from "./app-paths";
 import { detectChrome } from "./chrome";
+import { createCleanupService } from "./cleanup";
 import { isAllowedRendererUrl, registerDesktopIpc } from "./ipc";
 import { confirmCloseIfPublishing } from "./lifecycle";
 import { createLogStore } from "./log-store";
@@ -64,6 +67,10 @@ async function startDesktopApp() {
   });
   await logStore.pruneExpired();
   const chrome = await detectChrome();
+  const cleanupService = createCleanupService({
+    applicationDataRoot: paths.root,
+    readGeneratedFiles: () => dataStore.readGeneratedFiles()
+  });
   const apiToken = randomBytes(32).toString("hex");
   publishController = createPublishController(playwrightBrowserLauncher, {
     resolveProfileDir: () => paths.defaultAccountProfile,
@@ -142,9 +149,54 @@ async function startDesktopApp() {
         await logStore.append("info", "已导出诊断包。", { diagnosticPath });
         return diagnosticPath;
       },
-      previewCleanup: async () => ({ applicationData: [], novelRecords: [] }),
-      beginUninstall: async () => {
-        throw new Error("卸载清理功能尚未启用。");
+      previewCleanup: (includeNovelRecords) => cleanupService.preview(includeNovelRecords),
+      beginUninstall: async (includeNovelRecords) => {
+        if (!app.isPackaged) {
+          return {
+            items: [],
+            complete: false,
+            uninstallStarted: false,
+            message: "开发模式不会删除源码或数据，请安装正式版本后再使用卸载功能。"
+          };
+        }
+
+        await publishController?.stop();
+        await logStore.flush();
+        const result = await cleanupService.execute(includeNovelRecords);
+        if (!result.complete) {
+          return {
+            ...result,
+            message: "部分数据清理失败，尚未启动系统卸载。请处理失败路径后重试。"
+          };
+        }
+
+        try {
+          await launchSystemUninstall();
+        } catch (error) {
+          return {
+            ...result,
+            complete: false,
+            uninstallStarted: false,
+            message: error instanceof Error ? error.message : String(error),
+            items: [...result.items, {
+              path: app.getPath("exe"),
+              status: "failed" as const,
+              error: error instanceof Error ? error.message : String(error)
+            }]
+          };
+        }
+
+        quitApproved = true;
+        setTimeout(() => {
+          const server = localServer;
+          localServer = null;
+          void (server?.close() ?? Promise.resolve()).finally(() => app.quit());
+        }, 250);
+        return {
+          ...result,
+          uninstallStarted: true,
+          message: "数据已清理，系统卸载已启动。"
+        };
       }
     }
   });
@@ -178,6 +230,31 @@ async function startDesktopApp() {
   });
 
   await mainWindow.loadURL(rendererUrl);
+}
+
+async function launchSystemUninstall() {
+  if (process.platform === "darwin") {
+    const executablePath = app.getPath("exe");
+    const appSuffixIndex = executablePath.indexOf(".app/");
+    if (appSuffixIndex < 0) throw new Error("没有找到当前应用程序包，无法移入废纸篓。");
+    const appBundle = executablePath.slice(0, appSuffixIndex + 4);
+    await shell.trashItem(appBundle);
+    return;
+  }
+
+  if (process.platform === "win32") {
+    const installDir = path.dirname(app.getPath("exe"));
+    const files = await readdir(installDir);
+    const uninstallerName = files.find((file) => /^(?:unins|uninstall).*\.exe$/i.test(file));
+    if (!uninstallerName) throw new Error("没有找到 Windows 卸载程序，请从系统设置的“已安装的应用”中卸载。");
+    spawn(path.join(installDir, uninstallerName), [], {
+      detached: true,
+      stdio: "ignore"
+    }).unref();
+    return;
+  }
+
+  throw new Error("当前操作系统暂不支持应用内卸载。");
 }
 
 async function requestQuit() {

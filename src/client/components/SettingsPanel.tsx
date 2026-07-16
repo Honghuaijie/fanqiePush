@@ -7,6 +7,7 @@ interface SettingsPanelProps {
   onOpenPath: (targetPath: string) => void | Promise<void>;
   onOpenReleasePage: () => void | Promise<void>;
   onExportDiagnostics?: () => Promise<string | null>;
+  onUninstall?: () => void;
 }
 
 function formatBytes(bytes: number): string {
@@ -127,6 +128,16 @@ export function SettingsPanel(props: SettingsPanelProps) {
             >
               导出诊断包
             </button>
+          </section>
+        ) : null}
+
+        {props.onUninstall ? (
+          <section className="settings-section settings-version-row danger-zone">
+            <div>
+              <h3>卸载工具</h3>
+              <p className="helper-text">卸载前会展示并清理工具产生的数据。</p>
+            </div>
+            <button className="danger-button" type="button" onClick={props.onUninstall}>卸载工具</button>
           </section>
         ) : null}
       </section>

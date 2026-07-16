@@ -9,6 +9,7 @@ import { PublishControls } from "./components/PublishControls";
 import { RangePanel } from "./components/RangePanel";
 import { getDesktopBridge } from "./desktop";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { UninstallDialog } from "./components/UninstallDialog";
 import type { DesktopInfo } from "../desktop/contracts";
 
 function today(): string {
@@ -34,6 +35,7 @@ export function App() {
   const [desktopInfo, setDesktopInfo] = useState<DesktopInfo | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [showInterruptedWarning, setShowInterruptedWarning] = useState(false);
+  const [uninstallOpen, setUninstallOpen] = useState(false);
 
   const canStart = useMemo(() => planItems.length > 0, [planItems.length]);
 
@@ -222,6 +224,18 @@ export function App() {
           onOpenPath={handleOpenPath}
           onOpenReleasePage={() => getDesktopBridge()?.openReleasePage()}
           onExportDiagnostics={() => getDesktopBridge()?.exportDiagnostics() ?? Promise.resolve(null)}
+          onUninstall={() => {
+            setSettingsOpen(false);
+            setUninstallOpen(true);
+          }}
+        />
+      ) : null}
+      {desktopInfo ? (
+        <UninstallDialog
+          visible={uninstallOpen}
+          onClose={() => setUninstallOpen(false)}
+          onPreview={(includeNovelRecords) => getDesktopBridge()!.previewCleanup(includeNovelRecords)}
+          onConfirm={(includeNovelRecords) => getDesktopBridge()!.beginUninstall(includeNovelRecords)}
         />
       ) : null}
     </main>

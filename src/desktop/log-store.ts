@@ -42,6 +42,7 @@ export function createLogStore(options: LogStoreOptions) {
   const maxBytes = options.maxBytes ?? 5_000_000;
   const retentionDays = options.retentionDays ?? 14;
   const currentLog = path.join(options.logsDir, "desktop.log");
+  let writeQueue: Promise<void> = Promise.resolve();
 
   async function ensureDirectories() {
     await Promise.all([
@@ -72,17 +73,20 @@ export function createLogStore(options: LogStoreOptions) {
     }));
   }
 
-  async function append(level: DesktopLogLevel, message: string, details?: unknown) {
-    await ensureDirectories();
-    const entry = {
-      timestamp: new Date().toISOString(),
-      level,
-      message: redact(message),
-      ...(details === undefined ? {} : { details: redact(details) })
-    };
-    const line = `${JSON.stringify(entry)}\n`;
-    await rotateIfNeeded(Buffer.byteLength(line));
-    await writeFile(currentLog, line, { encoding: "utf8", flag: "a" });
+  function append(level: DesktopLogLevel, message: string, details?: unknown) {
+    writeQueue = writeQueue.catch(() => undefined).then(async () => {
+      await ensureDirectories();
+      const entry = {
+        timestamp: new Date().toISOString(),
+        level,
+        message: redact(message),
+        ...(details === undefined ? {} : { details: redact(details) })
+      };
+      const line = `${JSON.stringify(entry)}\n`;
+      await rotateIfNeeded(Buffer.byteLength(line));
+      await writeFile(currentLog, line, { encoding: "utf8", flag: "a" });
+    });
+    return writeQueue;
   }
 
   async function readRecentLogs(): Promise<unknown[]> {
@@ -104,8 +108,10 @@ export function createLogStore(options: LogStoreOptions) {
   return {
     append,
     pruneExpired,
+    flush: () => writeQueue,
 
     async exportDiagnostics(context: DiagnosticContext) {
+      await writeQueue;
       await ensureDirectories();
       await pruneExpired();
       const diagnosticPath = path.join(options.diagnosticsDir, `diagnostic-${timestampForFile()}.json`);

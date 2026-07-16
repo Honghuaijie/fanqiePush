@@ -38,12 +38,15 @@ export interface CleanupPreview {
 
 export interface CleanupResultItem {
   path: string;
-  status: "deleted" | "kept" | "missing" | "failed";
+  status: "pending" | "deleted" | "kept" | "missing" | "failed";
   error?: string;
 }
 
 export interface CleanupResult {
   items: CleanupResultItem[];
+  complete?: boolean;
+  uninstallStarted?: boolean;
+  message?: string;
 }
 
 export interface FanqieDesktopBridge {

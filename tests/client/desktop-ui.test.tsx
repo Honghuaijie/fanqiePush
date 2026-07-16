@@ -8,6 +8,7 @@ import { importBook } from "../../src/client/api";
 import { ImportPanel } from "../../src/client/components/ImportPanel";
 import { App } from "../../src/client/App";
 import { SettingsPanel } from "../../src/client/components/SettingsPanel";
+import { UninstallDialog } from "../../src/client/components/UninstallDialog";
 import type { DesktopInfo } from "../../src/desktop/contracts";
 import type { FanqieDesktopBridge } from "../../src/desktop/contracts";
 
@@ -235,5 +236,29 @@ describe("interrupted publish warning", () => {
     expect(await screen.findByText("上次任务异常结束，请先检查番茄后台。"))
       .toBeTruthy();
     expect(bridge.getRuntime).not.toHaveBeenCalled();
+  });
+});
+
+describe("desktop uninstall dialog", () => {
+  it("defaults to removing registered publish records and shows exact paths", async () => {
+    const onPreview = vi.fn(async () => ({
+      applicationData: ["/app-data"],
+      novelRecords: ["/books/测试书/.fanqie-publish.json"]
+    }));
+    render(<UninstallDialog
+      visible
+      onClose={vi.fn()}
+      onPreview={onPreview}
+      onConfirm={vi.fn()}
+    />);
+
+    expect(await screen.findByText("/app-data")).toBeTruthy();
+    expect(screen.getByText("/books/测试书/.fanqie-publish.json")).toBeTruthy();
+    expect((screen.getByRole("checkbox", {
+      name: "同时删除小说文件夹中的发布记录"
+    }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByText("删除发布记录后，以后可能无法识别已经提交过的章节。"))
+      .toBeTruthy();
+    expect(onPreview).toHaveBeenCalledWith(true);
   });
 });
