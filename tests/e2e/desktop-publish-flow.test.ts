@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { detectChrome } from "../../src/desktop/chrome";
 import {
   createPlaywrightBrowserLauncher,
-  createPublishController
+  createPublishController,
+  type PublishController
 } from "../../src/server/automation/publisher";
 import { startFanqieMockServer } from "./fanqie-mock-server";
 
@@ -28,6 +29,7 @@ describe("scheduled publish flow against local Fanqie pages", () => {
     const body = `测试正文。${"这是用于本地自动化验证的章节内容。".repeat(90)}`;
     await writeFile(path.join(bookDir, "第001章 开局.md"), `# 第001章 开局\n\n${body}`, "utf8");
     const mock = await startFanqieMockServer({ typoPrompt });
+    let controller: PublishController | undefined;
 
     try {
       const chrome = await detectChrome();
@@ -39,7 +41,7 @@ describe("scheduled publish flow against local Fanqie pages", () => {
         viewport: { width: 1400, height: 900 },
         onRequest: (url) => requestUrls.push(url)
       });
-      const controller = createPublishController(launcher, {
+      controller = createPublishController(launcher, {
         resolveProfileDir: () => profileDir,
         bookManageUrl: `${mock.origin}/main/writer/book-manage`
       });
@@ -76,6 +78,7 @@ describe("scheduled publish flow against local Fanqie pages", () => {
       }));
       await expect(access(path.join(bookDir, ".fanqie-browser-profile"))).rejects.toThrow();
     } finally {
+      await controller?.stop();
       await mock.close();
     }
   }, 120_000);

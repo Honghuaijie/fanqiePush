@@ -44,10 +44,10 @@ export function sortPlanForPreview(plan: PublishPlanItem[]): PublishPlanItem[] {
 }
 
 function addDays(date: string, offset: number): string {
-  const value = new Date(`${date}T00:00:00.000+08:00`);
-  value.setDate(value.getDate() + offset);
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, "0");
-  const day = String(value.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  const [year, month, day] = date.split("-").map(Number);
+  const value = new Date(Date.UTC(year, month - 1, day + offset));
+  const nextYear = value.getUTCFullYear();
+  const nextMonth = String(value.getUTCMonth() + 1).padStart(2, "0");
+  const nextDay = String(value.getUTCDate()).padStart(2, "0");
+  return `${nextYear}-${nextMonth}-${nextDay}`;
 }

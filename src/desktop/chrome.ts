@@ -23,10 +23,10 @@ async function fileExists(candidate: string): Promise<boolean> {
 
 function getChromeCandidates(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): string[] {
   if (platform === "darwin") {
-    const executable = path.join("Google Chrome.app", "Contents", "MacOS", "Google Chrome");
+    const executable = path.posix.join("Google Chrome.app", "Contents", "MacOS", "Google Chrome");
     return [
-      path.join("/Applications", executable),
-      ...(env.HOME ? [path.join(env.HOME, "Applications", executable)] : [])
+      path.posix.join("/Applications", executable),
+      ...(env.HOME ? [path.posix.join(env.HOME, "Applications", executable)] : [])
     ];
   }
 
