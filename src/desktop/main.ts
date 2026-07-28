@@ -19,6 +19,7 @@ import { createCleanupService } from "./cleanup";
 import { isAllowedRendererUrl, registerDesktopIpc } from "./ipc";
 import { confirmCloseIfPublishing } from "./lifecycle";
 import { createLogStore } from "./log-store";
+import { createUpdateService } from "./updater";
 
 const RELEASE_URL = "https://github.com/Honghuaijie/fanqiePush/releases";
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
@@ -64,6 +65,18 @@ async function startDesktopApp() {
   const logStore = createLogStore({
     logsDir: paths.logsDir,
     diagnosticsDir: paths.diagnosticsDir
+  });
+  const updateService = createUpdateService({
+    getWindow: () => mainWindow,
+    beforeInstall: async () => {
+      quitApproved = true;
+      await publishController?.stop();
+      if (localServer) {
+        await localServer.close();
+        localServer = null;
+      }
+      await logStore.flush();
+    }
   });
   await logStore.pruneExpired();
   const chrome = await detectChrome();
@@ -136,7 +149,7 @@ async function startDesktopApp() {
         return error ? { ok: false, error } : { ok: true };
       },
       openReleasePage: async () => {
-        await shell.openExternal(RELEASE_URL);
+        await updateService.checkForUpdates(true);
       },
       exportDiagnostics: async () => {
         const settings = await dataStore.readSettings();
@@ -230,6 +243,7 @@ async function startDesktopApp() {
   });
 
   await mainWindow.loadURL(rendererUrl);
+  updateService.scheduleInitialCheck();
 }
 
 async function launchSystemUninstall() {

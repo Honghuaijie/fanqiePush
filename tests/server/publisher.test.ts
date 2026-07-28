@@ -2,7 +2,7 @@ import { access, mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promise
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createPublishController } from "../../src/server/automation/publisher";
+import { createPublishController, selectCurrentMonthDateCell } from "../../src/server/automation/publisher";
 import type { PublishPlanItem } from "../../src/shared/types";
 
 const planItem: PublishPlanItem = {
@@ -22,6 +22,46 @@ afterEach(async () => {
     await rm(tempDir, { recursive: true, force: true });
     tempDir = null;
   }
+});
+
+describe("date picker", () => {
+  it("selects the current-month day when the previous month contains the same day number", () => {
+    const selected = selectCurrentMonthDateCell([
+      {
+        text: "29",
+        className: "arco-picker-cell",
+        ariaLabel: "",
+        title: "",
+        x: 10,
+        y: 10
+      },
+      {
+        text: "29",
+        className: "arco-picker-cell arco-picker-cell-in-view",
+        ariaLabel: "",
+        title: "",
+        x: 110,
+        y: 110
+      }
+    ], "2026-07-29", "29");
+
+    expect(selected).toMatchObject({ x: 110, y: 110 });
+  });
+
+  it("does not select an adjacent-month day", () => {
+    const selected = selectCurrentMonthDateCell([
+      {
+        text: "29",
+        className: "arco-picker-cell",
+        ariaLabel: "",
+        title: "",
+        x: 10,
+        y: 10
+      }
+    ], "2026-07-29", "29");
+
+    expect(selected).toBeUndefined();
+  });
 });
 
 describe("publisher controller", () => {

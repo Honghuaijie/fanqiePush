@@ -11,6 +11,8 @@
 - Windows 首次运行如果出现 Microsoft Defender SmartScreen，请确认安装包来自本项目发布页，然后点击“更多信息”与“仍要运行”。
 - macOS 首次运行如果提示无法验证开发者，请在“系统设置 → 隐私与安全性”中找到拦截提示并选择“仍要打开”。
 - 覆盖安装新版本不会删除本地设置、Chrome 登录资料、运行日志或小说发布记录。
+- 从 `0.2.1` 开始，应用启动后会自动检查 GitHub Release；新版本下载完成后可直接重启安装。
+- 已安装的 `0.2.0` 需要首次手动运行一次 `0.2.1` 安装包进行覆盖升级，以后的版本可以在应用内更新。
 - 正式对外销售前必须配置 Windows 代码签名和 Apple Developer ID 签名、公证，不能继续分发未签名安装包。
 
 应用内“设置与数据”页面会显示所有数据保存地址，并提供卸载入口。卸载前会列出待清理的完整路径；应用数据始终清理，小说文件夹中的 `.fanqie-publish.json` 默认删除，也可以取消勾选后保留。
@@ -198,6 +200,21 @@ Windows PowerShell：
 ```powershell
 $env:PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD="1"
 npm run dist:win
+```
+
+一键发布新版本（Windows 请在 Git Bash 中运行）：
+
+```bash
+bash release.sh patch "本次更新说明"
+```
+
+脚本会自动更新版本号、运行检查、提交代码、创建版本标签并推送。GitHub Actions 随后会生成 Windows `.exe`、macOS `.dmg/.zip`，并将安装包和自动更新元数据发布到对应的 GitHub Release。
+
+还可以使用 `minor`、`major` 或明确版本号：
+
+```bash
+bash release.sh minor "功能更新"
+bash release.sh 0.3.5 "指定版本"
 ```
 
 ## 注意事项

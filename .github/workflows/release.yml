@@ -62,7 +62,7 @@ jobs:
       - name: 生成 macOS 校验和
         if: runner.os == 'macOS'
         shell: bash
-        run: shasum -a 256 release/*-mac-universal.dmg > release/SHA256SUMS-macos.txt
+        run: shasum -a 256 release/*-mac-universal.dmg release/*-mac-universal.zip > release/SHA256SUMS-macos.txt
 
       - name: 上传 Windows 安装包
         if: runner.os == 'Windows'
@@ -71,6 +71,8 @@ jobs:
           name: ${{ matrix.artifact }}
           path: |
             release/*-win-x64.exe
+            release/*.exe.blockmap
+            release/latest.yml
             release/SHA256SUMS-windows.txt
           if-no-files-found: error
 
@@ -81,11 +83,14 @@ jobs:
           name: ${{ matrix.artifact }}
           path: |
             release/*-mac-universal.dmg
+            release/*-mac-universal.zip
+            release/*.zip.blockmap
+            release/latest-mac.yml
             release/SHA256SUMS-macos.txt
           if-no-files-found: error
 
   release:
-    name: 创建 GitHub 预发布
+    name: 创建 GitHub 正式发布
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -95,7 +100,7 @@ jobs:
           path: release-assets
           merge-multiple: true
 
-      - name: 创建预发布
+      - name: 创建正式发布
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -105,5 +110,4 @@ jobs:
           release-assets/*
           --verify-tag
           --generate-notes
-          --prerelease
-          --title "番茄章节发布工具 $GITHUB_REF_NAME（未签名测试版）"
+          --title "番茄章节发布工具 $GITHUB_REF_NAME"

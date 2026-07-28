@@ -69,6 +69,38 @@ export interface PublishDatePickerDebugSnapshot {
   };
 }
 
+export interface CalendarDateCellCandidate {
+  text: string;
+  className: string;
+  ariaLabel: string;
+  title: string;
+  x: number;
+  y: number;
+}
+
+export function selectCurrentMonthDateCell(
+  candidates: CalendarDateCellCandidate[],
+  targetDate: string,
+  targetDay: string
+): CalendarDateCellCandidate | undefined {
+  const [year, month, day] = targetDate.split("-").map(Number);
+  const dateLabels = [
+    targetDate,
+    targetDate.replace(/-/g, "/"),
+    `${year}年${month}月${day}日`
+  ];
+  const selectable = candidates.filter((candidate) => {
+    const className = candidate.className;
+    return className.includes("picker-cell-in-view")
+      && !className.includes("picker-cell-disabled");
+  });
+
+  return selectable.find((candidate) => {
+    const label = `${candidate.ariaLabel} ${candidate.title}`;
+    return dateLabels.some((dateLabel) => label.includes(dateLabel));
+  }) ?? selectable.find((candidate) => candidate.text === targetDay);
+}
+
 export interface StartPublishInput {
   bookName: string;
   folderPath: string;
@@ -920,8 +952,8 @@ export function createPlaywrightBrowserLauncher(options: PlaywrightLauncherOptio
             throw new Error(`没有把日期面板切到目标年月：计划 ${yearText}-${monthText}，面板当前 ${navigateResult.monthText || "未知"}。`);
           }
 
-          const clicked = await activePage.evaluate((args: any) => {
-            const [targetDate, targetYearText, targetMonthText, targetDayText] = args as [string, string, string, string];
+          const dateCells = await activePage.evaluate((args: any) => {
+            const [targetYearText, targetMonthText] = args as [string, string];
             const visible = (element: Element) => {
               const style = window.getComputedStyle(element);
               const rect = element.getBoundingClientRect();
@@ -933,30 +965,47 @@ export function createPlaywrightBrowserLauncher(options: PlaywrightLauncherOptio
               .map((element) => normalize(element.textContent))
               .find((text) => /^\d{4}年\d{1,2}月$/.test(text));
             if (visibleMonth !== `${targetYearText}年${Number(targetMonthText)}月`) {
-              return false;
+              return [];
             }
-            const candidates = Array.from(document.querySelectorAll("[class*='picker'], [role='gridcell'], td, div, span"))
+
+            const titleElement = Array.from(document.querySelectorAll("[class*='picker'], [role='dialog'], div, span"))
               .filter(visible)
-              .filter((element) => {
-                const text = normalize(element.textContent);
-                const aria = normalize(element.getAttribute("aria-label") || element.getAttribute("title"));
-                const className = typeof element.className === "string" ? element.className : "";
-                return (text === targetDayText || aria.includes(targetDate) || aria.includes(`${targetMonthText}-${targetDayText}`))
-                  && !className.includes("disabled")
-                  && !className.includes("not-in-view");
-              })
+              .filter((element) => normalize(element.textContent) === `${targetYearText}年${Number(targetMonthText)}月`)
               .sort((left, right) => {
                 const leftRect = left.getBoundingClientRect();
                 const rightRect = right.getBoundingClientRect();
                 return (leftRect.width * leftRect.height) - (rightRect.width * rightRect.height);
+              })[0];
+            const calendarRoot = titleElement?.closest("[class*='picker-container'], [class*='picker-panel']")
+              ?? document.body;
+
+            const inViewCells = Array.from(calendarRoot.querySelectorAll("[class*='picker-cell-in-view']")) as Element[];
+            const roleCells = Array.from(calendarRoot.querySelectorAll("[role='gridcell']")) as Element[];
+            const usedRoleFallback = inViewCells.length === 0 && roleCells.length > 0 && roleCells.length <= 31;
+            const cellElements = inViewCells.length > 0
+              ? inViewCells
+              : usedRoleFallback ? roleCells : [];
+
+            return cellElements
+              .filter(visible)
+              .map((element) => {
+                const rect = element.getBoundingClientRect();
+                const rawClassName = typeof element.className === "string" ? element.className : "";
+                return {
+                  text: normalize(element.textContent),
+                  className: usedRoleFallback ? `${rawClassName} picker-cell-in-view` : rawClassName,
+                  ariaLabel: normalize(element.getAttribute("aria-label")),
+                  title: normalize(element.getAttribute("title")),
+                  x: rect.left + rect.width / 2,
+                  y: rect.top + rect.height / 2
+                };
               });
-            const target = candidates.find((element) => element instanceof HTMLElement);
-            if (target instanceof HTMLElement) {
-              target.click();
-              return true;
-            }
-            return false;
-          }, [dateText, yearText, monthText, dayNumber]);
+          }, [yearText, monthText]);
+          const targetCell = selectCurrentMonthDateCell(dateCells, dateText, dayNumber);
+          const clicked = Boolean(targetCell);
+          if (targetCell) {
+            await activePage.mouse.click(targetCell.x, targetCell.y);
+          }
 
           if (!clicked) {
             throw new Error(`日期面板已经切到 ${yearText}年${Number(monthText)}月，但没有找到 ${dayNumber} 日。`);

@@ -11,6 +11,10 @@ files:
   - node_modules/**
 asarUnpack:
   - node_modules/playwright-core/**
+publish:
+  provider: github
+  owner: Honghuaijie
+  repo: fanqiePush
 win:
   icon: build/icon.ico
   target:
@@ -29,6 +33,9 @@ mac:
   category: public.app-category.productivity
   target:
     - target: dmg
+      arch:
+        - universal
+    - target: zip
       arch:
         - universal
 dmg:
