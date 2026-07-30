@@ -1,6 +1,6 @@
 appId: com.honghuaijie.fanqiepush
 productName: 番茄章节发布工具
-artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+artifactName: fanqie-publish-tool-${version}-${os}-${arch}.${ext}
 directories:
   output: release
   buildResources: build

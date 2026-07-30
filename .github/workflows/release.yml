@@ -50,6 +50,28 @@ jobs:
       - name: 生成安装包
         run: ${{ matrix.command }}
 
+      - name: 验证 Windows 自动更新文件
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $pathLine = Select-String -Path release/latest.yml -Pattern '^path:\s*(.+)$'
+          if (-not $pathLine) {
+            throw "latest.yml 缺少安装包路径"
+          }
+          $installerName = $pathLine.Matches[0].Groups[1].Value.Trim().Trim("'`"")
+          $installerPath = Join-Path release $installerName
+          if (-not (Test-Path -LiteralPath $installerPath)) {
+            throw "latest.yml 引用的安装包不存在: $installerName"
+          }
+
+      - name: 验证 macOS 自动更新文件
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          update_path="$(awk -F': ' '/^path:/{print $2}' release/latest-mac.yml | tr -d "'\"")"
+          test -n "$update_path"
+          test -f "release/$update_path"
+
       - name: 生成 Windows 校验和
         if: runner.os == 'Windows'
         shell: pwsh
