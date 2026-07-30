@@ -53,11 +53,16 @@ export async function startFanqieMockServer(options: { typoPrompt: boolean; next
       <div id="settings" class="modal arco-modal hidden" role="dialog">
         <h2>发布设置</h2><label>是否使用AI <span id="aiYes">是</span> <span id="aiNo">否</span></label>
         <p>定时发布 <button role="switch" aria-checked="true">开启</button></p>
-        <input id="publishDate" class="arco-picker-start-time" placeholder="日期" value="2026-08-01">
+        <input id="publishDate" class="arco-picker-start-time" placeholder="日期" value="2026-07-31">
         <input id="publishTime" class="arco-picker-start-time" placeholder="时间" value="09:30">
         <button id="confirmPublish">确认发布</button>
       </div>
-      <div id="picker" class="picker-popup hidden"><span>2026年8月</span><span role="gridcell" id="day1">1</span></div>
+      <div id="picker" class="picker-popup picker-panel hidden">
+        <button id="previousMonth" aria-label="上个月">‹</button>
+        <span id="calendarTitle">2026年7月</span>
+        <button id="nextMonth" aria-label="下个月">›</button>
+        <span class="picker-cell-in-view" role="gridcell" id="day1">1</span>
+      </div>
     `, `
       let aiUsed = false;
       let detectionMethod = "";
@@ -75,6 +80,8 @@ export async function startFanqieMockServer(options: { typoPrompt: boolean; next
       document.getElementById("aiYes").onclick=()=>{aiUsed=true};
       document.getElementById("aiNo").onclick=()=>{aiUsed=false};
       document.getElementById("publishDate").onclick=()=>picker.classList.remove("hidden");
+      document.getElementById("previousMonth").onclick=()=>setTimeout(()=>{document.getElementById("calendarTitle").textContent="2026年6月"},300);
+      document.getElementById("nextMonth").onclick=()=>setTimeout(()=>{document.getElementById("calendarTitle").textContent="2026年8月"},300);
       document.getElementById("day1").onclick=()=>{document.getElementById("publishDate").value="2026-08-01";picker.classList.add("hidden")};
       document.getElementById("confirmPublish").onclick=async()=>{
         const number=document.querySelector(".serial-input").value;

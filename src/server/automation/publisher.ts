@@ -933,43 +933,108 @@ export function createPlaywrightBrowserLauncher(options: PlaywrightLauncherOptio
           await pickerInputs.nth(0).click();
           await activePage.waitForTimeout(300);
 
-          const navigateResult = await activePage.evaluate((args: any) => {
-            const [targetIndex] = args as [number];
-          const visible = (element: Element) => {
-            const style = window.getComputedStyle(element);
-            const rect = element.getBoundingClientRect();
-            return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
-          };
-          const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
-            const findCalendarTitle = () => Array.from(document.querySelectorAll("[class*='picker'], [role='dialog'], div, span"))
-              .filter(visible)
-              .map((element) => normalize(element.textContent))
-              .find((text) => /^\d{4}年\d{1,2}月$/.test(text));
-            const clickNav = (direction: "prev" | "next") => {
-              const targetText = direction === "prev" ? "‹" : "›";
-              const target = Array.from(document.querySelectorAll("button, [role='button'], span, div"))
+          let navigateResult = { ok: false, monthText: "" };
+          for (let attempt = 0; attempt < 24; attempt += 1) {
+            const calendarState = await activePage.evaluate((args: any) => {
+              const [targetIndex] = args as [number];
+              const visible = (element: Element) => {
+                const style = window.getComputedStyle(element);
+                const rect = element.getBoundingClientRect();
+                return style.visibility !== "hidden"
+                  && style.display !== "none"
+                  && style.opacity !== "0"
+                  && rect.width > 0
+                  && rect.height > 0;
+              };
+              const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
+              const titleElement = Array.from(document.querySelectorAll("[class*='picker'], [role='dialog'], div, span"))
                 .filter(visible)
-                .filter((element) => normalize(element.textContent) === targetText)
-                .sort((left, right) => left.getBoundingClientRect().top - right.getBoundingClientRect().top)[0];
-              if (target instanceof HTMLElement) {
-                target.click();
-                return true;
-              }
-              return false;
-            };
+                .filter((element) => /^\d{4}年\d{1,2}月$/.test(normalize(element.textContent)))
+                .sort((left, right) => {
+                  const leftRect = left.getBoundingClientRect();
+                  const rightRect = right.getBoundingClientRect();
+                  return (leftRect.width * leftRect.height) - (rightRect.width * rightRect.height);
+                })[0];
+              const monthText = normalize(titleElement?.textContent);
+              const match = monthText.match(/^(\d{4})年(\d{1,2})月$/);
+              if (!titleElement || !match) return { ok: false, monthText, point: null };
 
-            for (let attempt = 0; attempt < 24; attempt += 1) {
-              const monthText = findCalendarTitle();
-              const match = monthText?.match(/^(\d{4})年(\d{1,2})月$/);
-              if (!match) return { ok: false, monthText: monthText ?? "" };
               const currentIndex = Number(match[1]) * 12 + Number(match[2]);
               const delta = targetIndex - currentIndex;
-              if (delta === 0) return { ok: true, monthText };
-              if (!clickNav(delta < 0 ? "prev" : "next")) return { ok: false, monthText };
-            }
+              if (delta === 0) return { ok: true, monthText, point: null };
 
-            return { ok: false, monthText: findCalendarTitle() ?? "" };
-          }, [targetMonthIndex]);
+              const direction = delta < 0 ? "prev" : "next";
+              const titleRect = titleElement.getBoundingClientRect();
+              const calendarRoot = titleElement.closest(
+                "[class*='picker-container'], [class*='picker-panel'], [class*='picker-dropdown'], [role='dialog']"
+              ) ?? document.body;
+              const candidates = (Array.from(
+                calendarRoot.querySelectorAll("button, [role='button'], [class*='picker-header-icon'], span")
+              ) as Element[])
+                .filter(visible)
+                .filter((element) => {
+                  const text = normalize(element.textContent);
+                  const label = normalize(`${element.getAttribute("aria-label") ?? ""} ${element.getAttribute("title") ?? ""}`);
+                  const className = typeof element.className === "string" ? element.className : "";
+                  const isYearControl = text === "«"
+                    || text === "»"
+                    || /year|super-(?:prev|next)/i.test(`${label} ${className}`)
+                    || /上一年|下一年/.test(label);
+                  if (isYearControl) return false;
+                  if (direction === "next") {
+                    return text === "›"
+                      || /下个?月|下一月|next month/i.test(label)
+                      || /picker-header-icon-next(?!-year)/i.test(className);
+                  }
+                  return text === "‹"
+                    || /上个?月|上一月|previous month|prev month/i.test(label)
+                    || /picker-header-icon-prev(?!-year)/i.test(className);
+                })
+                .filter((element) => {
+                  const rect = element.getBoundingClientRect();
+                  return direction === "next" ? rect.left >= titleRect.left : rect.right <= titleRect.right;
+                })
+                .sort((left, right) => {
+                  const leftRect = left.getBoundingClientRect();
+                  const rightRect = right.getBoundingClientRect();
+                  const leftDistance = Math.abs((leftRect.left + leftRect.width / 2) - (titleRect.left + titleRect.width / 2));
+                  const rightDistance = Math.abs((rightRect.left + rightRect.width / 2) - (titleRect.left + titleRect.width / 2));
+                  return leftDistance - rightDistance;
+                });
+              const target = candidates[0];
+              if (!target) return { ok: false, monthText, point: null };
+              const rect = target.getBoundingClientRect();
+              return {
+                ok: false,
+                monthText,
+                point: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+              };
+            }, [targetMonthIndex]);
+
+            navigateResult = { ok: calendarState.ok, monthText: calendarState.monthText };
+            if (calendarState.ok) break;
+            if (!calendarState.point) break;
+
+            await activePage.mouse.click(calendarState.point.x, calendarState.point.y);
+            try {
+              await activePage.waitForFunction((previousMonth: string) => {
+                const visible = (element: Element) => {
+                  const style = window.getComputedStyle(element);
+                  const rect = element.getBoundingClientRect();
+                  return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+                };
+                const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
+                return Array.from(document.querySelectorAll("[class*='picker'], [role='dialog'], div, span"))
+                  .filter(visible)
+                  .some((element) => {
+                    const text = normalize(element.textContent);
+                    return /^\d{4}年\d{1,2}月$/.test(text) && text !== previousMonth;
+                  });
+              }, calendarState.monthText, { timeout: 3000 });
+            } catch {
+              break;
+            }
+          }
 
           if (!navigateResult.ok) {
             throw new Error(`没有把日期面板切到目标年月：计划 ${yearText}-${monthText}，面板当前 ${navigateResult.monthText || "未知"}。`);
