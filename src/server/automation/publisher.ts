@@ -689,6 +689,14 @@ export function createPlaywrightBrowserLauncher(options: PlaywrightLauncherOptio
           .map((element) => normalize(element.textContent))
           .filter(Boolean);
         const bodyText = normalize(document.body.innerText);
+        const hasVisiblePublishSettings = Array.from(
+          document.querySelectorAll("[role='dialog'], .arco-modal, .semi-modal, [class*='modal']")
+        )
+          .filter(visible)
+          .some((element) => {
+            const text = normalize(element.textContent);
+            return text.includes("发布设置") && text.includes("确认发布");
+          });
         return {
           url: window.location.href,
           buttons: [...new Set(buttonTexts)].slice(0, 30),
@@ -699,7 +707,7 @@ export function createPlaywrightBrowserLauncher(options: PlaywrightLauncherOptio
           hasBasicCheck: buttonTexts.some((text) => text.includes("仅基础检测")),
           hasFullCheck: buttonTexts.some((text) => text.includes("全面检测")),
           hasAnyCheck: buttonTexts.some((text) => text.includes("检测")),
-          hasPublishSettings: bodyText.includes("发布设置") && bodyText.includes("确认发布"),
+          hasPublishSettings: hasVisiblePublishSettings,
           hasConfirmPublish: buttonTexts.some((text) => text.includes("确认发布"))
         };
       });
@@ -715,29 +723,44 @@ export function createPlaywrightBrowserLauncher(options: PlaywrightLauncherOptio
     }
 
     async function clickNextAndWaitForDetection() {
-      await clickVisibleButton("下一步");
-      try {
-        await activePage.waitForFunction(() => {
-          const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
-          const visible = (element: Element) => {
-            const style = window.getComputedStyle(element);
-            const rect = element.getBoundingClientRect();
-            return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
-          };
-          const buttonTexts = Array.from(document.querySelectorAll("button, [role='button']"))
-            .filter(visible)
-            .map((element) => normalize(element.textContent));
-          const bodyText = normalize(document.body.innerText);
-          return buttonTexts.some((text) => text === "提交" || text.includes("检测") || text.includes("确认发布"))
-            || bodyText.includes("发布设置")
-            || bodyText.includes("请选择内容检测方式");
-        }, null, { timeout: 15000 });
-      } catch {
-        const state = await getPublishPageState();
-        if (!state.hasNext || state.hasSubmit || state.hasFullCheck || state.hasAnyCheck || state.hasPublishSettings) {
+      const waitForVisibleNextStep = () => activePage.waitForFunction(() => {
+        const normalize = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
+        const visible = (element: Element) => {
+          const style = window.getComputedStyle(element);
+          const rect = element.getBoundingClientRect();
+          return style.visibility !== "hidden"
+            && style.display !== "none"
+            && style.opacity !== "0"
+            && !element.closest("[aria-hidden='true']")
+            && rect.width > 0
+            && rect.height > 0;
+        };
+        const buttonTexts = Array.from(document.querySelectorAll("button, [role='button']"))
+          .filter(visible)
+          .map((element) => normalize(element.textContent));
+        const panelTexts = Array.from(document.querySelectorAll("[role='dialog'], .arco-modal, .semi-modal, [class*='modal']"))
+          .filter(visible)
+          .map((element) => normalize(element.textContent));
+        return buttonTexts.some((text) => text === "提交" || text.includes("检测") || text.includes("确认发布"))
+          || panelTexts.some((text) => text.includes("发布设置") || text.includes("请选择内容检测方式"));
+      }, null, { timeout: 15000 });
+
+      for (let clickAttempt = 1; clickAttempt <= 2; clickAttempt += 1) {
+        await clickVisibleButton("下一步");
+        try {
+          await waitForVisibleNextStep();
           return;
+        } catch {
+          const state = await getPublishPageState();
+          if (!state.hasNext || state.hasSubmit || state.hasFullCheck || state.hasAnyCheck || state.hasPublishSettings) {
+            return;
+          }
+          if (clickAttempt === 1) {
+            await activePage.waitForTimeout(1200);
+            continue;
+          }
+          throw new Error(`已填写章节内容，但两次点击“下一步”后页面仍停在编辑器。请确认页面是否有标题、正文或其他必填项提示。当前按钮：${state.buttons.join("、") || "无"}`);
         }
-        throw new Error(`已填写章节内容，但点击“下一步”后页面仍停在编辑器。请确认页面是否已保存、标题是否完整、或番茄页面是否有必填项提示。当前按钮：${state.buttons.join("、") || "无"}`);
       }
     }
 
@@ -777,7 +800,7 @@ export function createPlaywrightBrowserLauncher(options: PlaywrightLauncherOptio
           continue;
         }
 
-        if (attempt < 3) {
+        if (attempt < 8) {
           await activePage.waitForTimeout(1200);
           continue;
         }

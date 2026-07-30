@@ -19,7 +19,7 @@ body{font-family:sans-serif;padding:32px}button,a,input,[role=button],[role=swit
 </style></head><body>${content}<script>${script}</script></body></html>`;
 }
 
-export async function startFanqieMockServer(options: { typoPrompt: boolean }) {
+export async function startFanqieMockServer(options: { typoPrompt: boolean; nextDelayMs?: number }) {
   const app = express();
   const submissions: MockSubmission[] = [];
   const detectionClicks: string[] = [];
@@ -68,7 +68,7 @@ export async function startFanqieMockServer(options: { typoPrompt: boolean }) {
       function showTypo(){ typo.classList.remove("hidden"); }
       function showDetection(){ typo.classList.add("hidden"); detection.classList.remove("hidden"); }
       function showSettings(method){ detectionMethod=method; detection.classList.add("hidden"); settings.classList.remove("hidden"); fetch("/detection",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({method})}); }
-      document.getElementById("next").onclick=()=>${nextAction};
+      document.getElementById("next").onclick=()=>setTimeout(()=>${nextAction}, ${options.nextDelayMs ?? 0});
       document.getElementById("submitTypo").onclick=showDetection;
       document.getElementById("basic").onclick=()=>showSettings("basic");
       document.getElementById("full").onclick=()=>showSettings("full");

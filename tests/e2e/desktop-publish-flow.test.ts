@@ -28,7 +28,7 @@ describe("scheduled publish flow against local Fanqie pages", () => {
     await mkdir(bookDir);
     const body = `测试正文。${"这是用于本地自动化验证的章节内容。".repeat(90)}`;
     await writeFile(path.join(bookDir, "第001章 开局.md"), `# 第001章 开局\n\n${body}`, "utf8");
-    const mock = await startFanqieMockServer({ typoPrompt });
+    const mock = await startFanqieMockServer({ typoPrompt, nextDelayMs: 3500 });
     let controller: PublishController | undefined;
 
     try {
