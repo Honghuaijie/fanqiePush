@@ -1232,15 +1232,26 @@ export function createPlaywrightBrowserLauncher(options: PlaywrightLauncherOptio
           return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
         };
         const bodyText = normalize(document.body.innerText);
-        const dialogOpen = Array.from(document.querySelectorAll("[role='dialog'], .arco-modal, .semi-modal, body > div"))
+        const publishDialog = Array.from(document.querySelectorAll("[role='dialog'], .arco-modal, .semi-modal, [class*='modal']"))
           .filter(visible)
-          .some((element) => normalize(element.textContent).includes("发布设置") && normalize(element.textContent).includes("确认发布"));
-        const toastText = Array.from(document.querySelectorAll(".arco-message, .semi-toast, .semi-toast-content, [class*='message'], [class*='toast']"))
+          .find((element) => normalize(element.textContent).includes("发布设置"));
+        const toastTexts = Array.from(document.querySelectorAll(
+          ".arco-message, .arco-message-content, .semi-toast, .semi-toast-content, [role='alert']"
+        ))
           .filter(visible)
           .map((element) => normalize(element.textContent))
-          .filter(Boolean)
-          .join(" ");
-        const combinedText = `${toastText} ${bodyText}`;
+          .filter(Boolean);
+
+        if (toastTexts.some((text) => text.includes("发布成功") || text.includes("提交成功") || text.includes("定时发布成功"))) {
+          return { status: "succeeded", message: "发布成功" };
+        }
+
+        // 番茄成功提交后会关闭发布设置。页面其他区域可能长期存在“请选择”占位文案，
+        // 因此弹窗已经关闭时必须优先判定成功，不能扫描整个 body 误报失败。
+        if (!publishDialog) {
+          return { status: "succeeded", message: "发布设置已关闭" };
+        }
+
         const failureMessages = [
           "更新作品数超出每日上限",
           "超出每日上限",
@@ -1252,18 +1263,22 @@ export function createPlaywrightBrowserLauncher(options: PlaywrightLauncherOptio
           "请选择",
           "不能为空"
         ];
-        const knownFailureText = failureMessages.find((text) => combinedText.includes(text));
-        if (knownFailureText) {
+        const validationTexts = (Array.from(publishDialog.querySelectorAll(
+          ".arco-form-message, .arco-form-item-message, .semi-form-field-error-message, [class*='error-message'], [role='alert']"
+        )) as Element[])
+          .filter(visible)
+          .map((element) => normalize(element.textContent))
+          .filter(Boolean);
+        const failureText = [...toastTexts, ...validationTexts]
+          .find((text) => failureMessages.some((failureMessage) => text.includes(failureMessage)));
+        if (failureText) {
           return {
             status: "failed",
-            message: knownFailureText === "超出每日上限" ? "更新作品数超出每日上限" : knownFailureText
+            message: failureText.includes("超出每日上限") ? "更新作品数超出每日上限" : failureText
           };
         }
         if (bodyText.includes("发布成功") || bodyText.includes("提交成功") || bodyText.includes("定时发布成功")) {
           return { status: "succeeded", message: "发布成功" };
-        }
-        if (!dialogOpen && !bodyText.includes("发布设置")) {
-          return { status: "succeeded", message: "发布设置已关闭" };
         }
         return null;
       }, null, { timeout: 15000 }).catch(async () => {

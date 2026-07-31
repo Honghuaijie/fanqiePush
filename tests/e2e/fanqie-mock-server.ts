@@ -43,6 +43,7 @@ export async function startFanqieMockServer(options: { typoPrompt: boolean; next
     const nextAction = options.typoPrompt ? "showTypo()" : "showDetection()";
     res.send(page(`
       <h1>测试书</h1>
+      <p id="unrelatedSelectPlaceholder">请选择</p>
       <label>第 <input class="serial-input" value=""> 章</label>
       <input class="serial-editor-input-hint-area" placeholder="请输入标题" value="">
       <div class="ProseMirror" contenteditable="true">请输入正文</div>
