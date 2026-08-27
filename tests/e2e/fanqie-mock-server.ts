@@ -61,7 +61,7 @@ export async function startFanqieMockServer(options: { typoPrompt: boolean; next
       <div id="picker" class="picker-popup picker-panel hidden">
         <button id="previousMonth" aria-label="上个月">‹</button>
         <span id="calendarTitle">2026年7月</span>
-        <button id="nextMonth" aria-label="下个月">›</button>
+        <button id="nextMonth"><svg width="12" height="12" aria-hidden="true"><path d="M2 1 L8 6 L2 11"></path></svg></button>
         <span class="picker-cell-in-view" role="gridcell" id="day1">1</span>
       </div>
     `, `

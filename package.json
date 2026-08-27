@@ -1,6 +1,6 @@
 {
   "name": "fanqie-publish-tool",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "private": true,
   "description": "导入 Markdown 小说章节并在番茄作者后台创建定时发布计划的本地桌面工具。",
   "author": "Honghuaijie",

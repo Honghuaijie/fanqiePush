@@ -968,14 +968,15 @@ export function createPlaywrightBrowserLauncher(options: PlaywrightLauncherOptio
               const calendarRoot = titleElement.closest(
                 "[class*='picker-container'], [class*='picker-panel'], [class*='picker-dropdown'], [role='dialog']"
               ) ?? document.body;
-              const candidates = (Array.from(
-                calendarRoot.querySelectorAll("button, [role='button'], [class*='picker-header-icon'], span")
+              const clickableElements = (Array.from(
+                calendarRoot.querySelectorAll("button, [role='button'], [class*='picker-header-icon']")
               ) as Element[])
                 .filter(visible)
-                .filter((element) => {
-                  const text = normalize(element.textContent);
-                  const label = normalize(`${element.getAttribute("aria-label") ?? ""} ${element.getAttribute("title") ?? ""}`);
-                  const className = typeof element.className === "string" ? element.className : "";
+                .filter((element) => !element.hasAttribute("disabled") && element.getAttribute("aria-disabled") !== "true");
+              const semanticCandidates = clickableElements.filter((element) => {
+                   const text = normalize(element.textContent);
+                   const label = normalize(`${element.getAttribute("aria-label") ?? ""} ${element.getAttribute("title") ?? ""}`);
+                   const className = typeof element.className === "string" ? element.className : "";
                   const isYearControl = text === "«"
                     || text === "»"
                     || /year|super-(?:prev|next)/i.test(`${label} ${className}`)
@@ -986,14 +987,26 @@ export function createPlaywrightBrowserLauncher(options: PlaywrightLauncherOptio
                       || /下个?月|下一月|next month/i.test(label)
                       || /picker-header-icon-next(?!-year)/i.test(className);
                   }
-                  return text === "‹"
-                    || /上个?月|上一月|previous month|prev month/i.test(label)
-                    || /picker-header-icon-prev(?!-year)/i.test(className);
-                })
+                   return text === "‹"
+                     || /上个?月|上一月|previous month|prev month/i.test(label)
+                     || /picker-header-icon-prev(?!-year)/i.test(className);
+                });
+              const geometricCandidates = clickableElements
                 .filter((element) => {
-                  const rect = element.getBoundingClientRect();
-                  return direction === "next" ? rect.left >= titleRect.left : rect.right <= titleRect.right;
-                })
+                   const rect = element.getBoundingClientRect();
+                   const titleCenterY = titleRect.top + titleRect.height / 2;
+                   const elementCenterY = rect.top + rect.height / 2;
+                   const onRequestedSide = direction === "next"
+                     ? rect.left >= titleRect.right - 2
+                     : rect.right <= titleRect.left + 2;
+                   return onRequestedSide
+                     && Math.abs(elementCenterY - titleCenterY) <= Math.max(48, titleRect.height * 2)
+                     && Math.abs((rect.left + rect.width / 2) - (titleRect.left + titleRect.width / 2)) <= 240;
+                });
+              // 新版番茄把月份箭头改成了没有文字、aria-label 和稳定类名的纯 SVG 按钮。
+              // 语义识别失败时，选择月份标题同一行、目标方向上距离标题最近的按钮；
+              // 更远的双箭头是年份切换，因此不会被优先选中。
+              const candidates = (semanticCandidates.length > 0 ? semanticCandidates : geometricCandidates)
                 .sort((left, right) => {
                   const leftRect = left.getBoundingClientRect();
                   const rightRect = right.getBoundingClientRect();
